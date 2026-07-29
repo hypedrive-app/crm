@@ -41,7 +41,9 @@ from crm.integrations.api import get_contact_by_phone_number
 #     checking whether `From` matches a known agent's plivo_endpoint_username
 #     (a value WE assigned when provisioning the endpoint — see
 #     get_browser_calling_credentials — so this disambiguation doesn't depend
-#     on guessing an undocumented Plivo-internal field).
+#     on guessing an undocumented Plivo-internal field). This case ALSO needs
+#     an explicit callerId on the Dial (see below) — an Endpoint has no phone
+#     number of its own to present to the PSTN network.
 #
 #     IMPORTANT — do NOT use `Direction`/`CallDirection` to distinguish these
 #     two cases: a Plivo engineer confirmed (github.com/plivo/
@@ -77,25 +79,27 @@ def handle_answer(**kwargs):
 		call_uuid = call_payload.get("CallUUID")
 		dial_target = frappe.request.args.get("dial_to")
 		is_browser_originated = False
+		agent_plivo_number = None
 
 		if not dial_target:
-			caller = call_payload.get("From")
-			if caller and frappe.db.exists("CRM Telephony Agent", {"plivo_endpoint_username": caller}):
+			# Confirmed live (2026-07-29 test call): Plivo reports From as a full
+			# `sip:<endpoint_username>@phone.plivo.com` URI for endpoint-originated
+			# calls, NOT the bare username — comparing the raw value against our
+			# stored plivo_endpoint_username always failed silently (fell through
+			# to the "unrecognized" branch below) until this was extracted.
+			caller = extract_endpoint_username(call_payload.get("From"))
+			if caller:
+				agent_plivo_number = frappe.db.get_value(
+					"CRM Telephony Agent", {"plivo_endpoint_username": caller}, "plivo_number"
+				)
+			if agent_plivo_number:
 				is_browser_originated = True
 				dial_target = call_payload.get("To")
 
-		# For browser-originated calls, `From` is the Plivo Endpoint username
-		# (e.g. "agent123456789012"), not a real phone number — using the
-		# agent's own Telephony Agent number there keeps the CRM Call Log's
-		# "From Number" column meaningful instead of showing an endpoint id.
-		log_from_number = call_payload.get("From")
-		if is_browser_originated:
-			log_from_number = (
-				frappe.db.get_value(
-					"CRM Telephony Agent", {"plivo_endpoint_username": log_from_number}, "plivo_number"
-				)
-				or log_from_number
-			)
+		# For browser-originated calls, `From` is the Plivo Endpoint's sip: URI,
+		# not a real phone number — the CRM Call Log's "From Number" shows the
+		# agent's own Plivo number instead (already resolved above).
+		log_from_number = agent_plivo_number if is_browser_originated else call_payload.get("From")
 
 		existing_log = get_call_log(call_payload)
 		if existing_log:
@@ -126,7 +130,17 @@ def handle_answer(**kwargs):
 			)
 			return _empty_response()
 
-		return _dial_response(dial_target)
+		# callerId is mandatory here, not cosmetic: Plivo's own <Dial> reference
+		# (plivo.com/docs/voice/xml/dial) documents that when callerId is
+		# omitted, Plivo falls back to "caller's ID" — for an Endpoint-originated
+		# leg that identity is the SIP endpoint itself, which is not a number
+		# the PSTN network can present as caller ID. Confirmed live: omitting
+		# callerId on a browser-originated call produced an immediate "Busy"
+		# from the carrier on every attempt (2026-07-29). Server-initiated
+		# calls don't hit this because their From is already a real Plivo
+		# number (the caller_id make_a_call posted to Plivo directly).
+		caller_id = agent_plivo_number if is_browser_originated else None
+		return _dial_response(dial_target, caller_id=caller_id)
 	except Exception:
 		request_log.status = "Failed"
 		request_log.error = frappe.get_traceback()
@@ -346,13 +360,31 @@ def make_a_call(to_number: str, from_number: str | None = None, caller_id: str |
 		return {"CallSid": call_log.id, "request_uuid": res.get("request_uuid")}
 
 
-def _dial_response(number: str) -> Response:
-	xml = f"<Response><Dial><Number>{frappe.utils.escape_html(number)}</Number></Dial></Response>"
+def _dial_response(number: str, caller_id: str | None = None) -> Response:
+	dial_attrs = f' callerId="{frappe.utils.escape_html(caller_id)}"' if caller_id else ""
+	xml = (
+		f"<Response><Dial{dial_attrs}>"
+		f"<Number>{frappe.utils.escape_html(number)}</Number>"
+		f"</Dial></Response>"
+	)
 	return Response(xml, mimetype="text/xml")
 
 
 def _empty_response() -> Response:
 	return Response("<Response></Response>", mimetype="text/xml")
+
+
+def extract_endpoint_username(from_value: str | None) -> str | None:
+	"""Plivo reports an Endpoint-originated call's From as a full SIP URI
+	(sip:<username>@phone.plivo.com), not the bare username — confirmed via a
+	live test call on 2026-07-29 (CRM Call Log 95d43c62-... recorded
+	From="sip:Administrator20063529841669406491173@phone.plivo.com"). Strips
+	the sip: scheme and @host suffix so it can be matched against the bare
+	plivo_endpoint_username stored on CRM Telephony Agent."""
+	if not from_value:
+		return None
+	value = from_value.removeprefix("sip:")
+	return value.split("@")[0]
 
 
 def start_recording(call_uuid: str):
