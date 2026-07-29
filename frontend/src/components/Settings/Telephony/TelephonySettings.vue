@@ -50,6 +50,7 @@
               { label: __(''), value: '' },
               { label: __('Twilio'), value: 'Twilio' },
               { label: __('Exotel'), value: 'Exotel' },
+              { label: __('Plivo'), value: 'Plivo' },
             ]"
             :placeholder="__('Select Medium')"
           />
@@ -136,6 +137,56 @@
           />
         </div>
       </div>
+      <div
+        v-if="isEnabled('plivo')"
+        class="h-px border-t mx-2 border-outline-elevation-2"
+      />
+      <div
+        v-if="isEnabled('plivo')"
+        class="flex items-center justify-between gap-8 py-3 pl-2 pr-1"
+      >
+        <div class="flex flex-col">
+          <div class="text-p-base-medium text-ink-gray-7 truncate">
+            {{ __('Plivo Number') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{ __('Set the Plivo number to be used for outgoing calls.') }}
+          </div>
+        </div>
+        <div>
+          <FormControl
+            v-model="telephonyAgent.doc.plivo_number"
+            class="flex-1 truncate w-44 p-1"
+            :placeholder="__('Enter Plivo Number')"
+            placement="bottom-end"
+          />
+        </div>
+      </div>
+      <div
+        v-if="isEnabled('plivo')"
+        class="flex items-center justify-between gap-8 py-3 pl-2 pr-1"
+      >
+        <div class="flex flex-col">
+          <div class="text-p-base-medium text-ink-gray-7 truncate">
+            {{ __('Personal Mobile No.') }}
+          </div>
+          <div class="text-p-sm text-ink-gray-5">
+            {{
+              __(
+                'Enter your personal mobile number used by Plivo to make calls',
+              )
+            }}
+          </div>
+        </div>
+        <div>
+          <FormControl
+            v-model="telephonyAgent.doc.mobile_no"
+            class="flex-1 truncate w-44 p-1"
+            :placeholder="__('Enter Personal Mobile No.')"
+            placement="bottom-end"
+          />
+        </div>
+      </div>
 
       <div
         v-if="isManager()"
@@ -190,6 +241,33 @@
             isEnabled('exotel') ? __('Update Configuration') : __('Configure')
           "
           @click="emit('updateStep', 'exotel-settings')"
+        />
+      </div>
+
+      <div
+        v-if="isManager()"
+        class="h-px border-t mx-2 border-outline-elevation-2"
+      />
+
+      <div
+        v-if="isManager()"
+        class="flex items-center justify-between py-3 px-2"
+      >
+        <div class="flex flex-col gap-1">
+          <span class="text-base-medium text-ink-gray-8">
+            {{ __('Plivo') }}
+          </span>
+          <span class="text-p-sm text-ink-gray-6">
+            {{
+              __('Configure your Plivo Telephony Integration Settings here')
+            }}
+          </span>
+        </div>
+        <Button
+          :label="
+            isEnabled('plivo') ? __('Update Configuration') : __('Configure')
+          "
+          @click="emit('updateStep', 'plivo-settings')"
         />
       </div>
     </div>
