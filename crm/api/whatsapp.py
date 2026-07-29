@@ -1,4 +1,5 @@
 import json
+import re
 
 import frappe
 from frappe import _
@@ -296,8 +297,36 @@ def create_whatsapp_message(
 
 
 @frappe.whitelist()
-def send_whatsapp_template(reference_doctype: str, reference_name: str, template: str, to: str):
+def send_whatsapp_template(
+	reference_doctype: str,
+	reference_name: str,
+	template: str,
+	to: str,
+	body_parameters: list | str | None = None,
+	header_parameters: list | str | None = None,
+):
 	validate_access(reference_doctype, reference_name)
+
+	if not frappe.db.exists("WhatsApp Templates", template):
+		frappe.throw(_("WhatsApp Template {0} does not exist.").format(template), frappe.DoesNotExistError)
+
+	if isinstance(body_parameters, str):
+		body_parameters = json.loads(body_parameters) if body_parameters else []
+	if isinstance(header_parameters, str):
+		header_parameters = json.loads(header_parameters) if header_parameters else []
+	body_parameters = body_parameters or []
+	header_parameters = header_parameters or []
+
+	template_doc = frappe.get_doc("WhatsApp Templates", template)
+	expected_body_params = _count_template_placeholders(template_doc.template)
+	if len(body_parameters) < expected_body_params or any(not p for p in body_parameters):
+		frappe.throw(
+			_(
+				"This template expects {0} body parameter(s), but {1} were provided. "
+				"Please fill in all template parameters before sending."
+			).format(expected_body_params, len(body_parameters))
+		)
+
 	doc = frappe.new_doc("WhatsApp Message")
 	doc.update(
 		{
@@ -311,8 +340,21 @@ def send_whatsapp_template(reference_doctype: str, reference_name: str, template
 			"to": to,
 		}
 	)
+	if body_parameters:
+		# frappe_whatsapp's send_template() reads body_param as a JSON object
+		# and iterates its .values() in insertion order, so a numeric-keyed
+		# dict preserves {{1}}, {{2}}, ... ordering.
+		doc.body_param = json.dumps({str(i + 1): value for i, value in enumerate(body_parameters)})
 	doc.insert(ignore_permissions=True)
 	return doc.name
+
+
+def _count_template_placeholders(template_text: str) -> int:
+	"""Count the highest {{n}} placeholder index referenced in a template body."""
+	if not template_text:
+		return 0
+	indices = [int(match) for match in re.findall(r"\{\{\s*(\d+)\s*\}\}", template_text)]
+	return max(indices) if indices else 0
 
 
 @frappe.whitelist()

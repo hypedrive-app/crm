@@ -762,7 +762,7 @@ function handleDocinfoUpdate({ doc, key }) {
   _document.reload()
 }
 
-function sendTemplate(template) {
+function sendTemplate({ template, bodyParameters, headerParameters }) {
   showWhatsappTemplates.value = false
   capture('send_whatsapp_template', { doctype: props.doctype })
   createResource({
@@ -772,6 +772,8 @@ function sendTemplate(template) {
       reference_name: props.docname,
       to: doc.value.mobile_no,
       template,
+      body_parameters: bodyParameters,
+      header_parameters: headerParameters,
     },
     auto: true,
     onError: (error) => {
