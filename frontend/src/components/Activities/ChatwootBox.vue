@@ -10,9 +10,15 @@
       :disabled="!conversationId"
       @focus="rows = 4"
       @blur="rows = 1"
-      @keydown.enter.stop="(e) => sendTextMessage(e)"
+      @keydown="onKeydown"
+      @compositionstart="isComposing = true"
+      @compositionend="isComposing = false"
     />
-    <Button variant="solid" :disabled="!conversationId || !content" @click="sendTextMessage()">
+    <Button
+      variant="solid"
+      :disabled="!conversationId || !content"
+      @click="sendTextMessage()"
+    >
       {{ __('Send') }}
     </Button>
   </div>
@@ -27,7 +33,7 @@ const props = defineProps({
   conversationId: { type: [Number, String], default: null },
 })
 
-const whatsapp = defineModel('chatwoot', { type: Object, default: () => ({}) })
+const chatwoot = defineModel('chatwoot', { type: Object, default: () => ({}) })
 
 const { capture } = useTelemetry()
 
@@ -36,13 +42,33 @@ const textareaRef = ref(null)
 const content = ref('')
 const placeholder = ref(__('Type your message here...'))
 
+// IME composition guard: while an IME (Hindi/Japanese/Chinese input, or an
+// emoji-picker candidate list) is composing, the Enter keystroke that
+// commits the candidate fires as a normal 'Enter' keydown too. Treating that
+// as "send" swallows the user's composed text and sends garbage/nothing —
+// so BOTH the browser's own `event.isComposing` and the legacy keyCode 229
+// fallback (older Safari/some Android WebViews don't set isComposing
+// reliably) are checked before Enter is ever treated as submit.
+const isComposing = ref(false)
+
+function isComposingEvent(event) {
+  return isComposing.value || event.isComposing || event.keyCode === 229
+}
+
+function onKeydown(event) {
+  if (event.key !== 'Enter') return
+  if (isComposingEvent(event)) return
+  if (event.shiftKey) return // Shift+Enter = newline, never sends
+  event.preventDefault()
+  sendTextMessage()
+}
+
 function show() {
   nextTick(() => textareaRef.value?.el?.focus())
 }
 
-function sendTextMessage(event) {
-  if (event?.shiftKey) return
-  if (!props.conversationId || !content.value) return
+function sendTextMessage() {
+  if (!props.conversationId || !content.value.trim()) return
   sendChatwootMessage()
   textareaRef.value?.el?.blur()
 }
@@ -59,7 +85,7 @@ function sendChatwootMessage() {
     auto: true,
     onSuccess: () => {
       capture('chatwoot_send_message')
-      whatsapp.value?.reload?.()
+      chatwoot.value?.reload?.()
     },
     onError: (error) => {
       content.value = messageContent

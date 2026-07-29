@@ -86,6 +86,21 @@ def get_chatwoot_messages(conversation_id: int, before: int = None):
 
 
 @frappe.whitelist()
+def get_new_chatwoot_messages(conversation_id: int, since_id: int = None):
+	"""Incremental poll proxy — used on realtime ('chatwoot_message' socket
+	event) refetch so an active thread only pulls what's new instead of the
+	full message history on every poll tick. See
+	frappe_chatwoot.api.chatwoot.get_new_messages for the bounded drain-loop
+	contract (truncated=True means call again immediately)."""
+	if not frappe.db.exists("DocType", "Chatwoot Settings"):
+		return {"messages": [], "meta": {}, "max_id_seen": since_id, "truncated": False}
+
+	from frappe_chatwoot.api.chatwoot import get_new_messages
+
+	return get_new_messages(conversation_id, since_id=since_id)
+
+
+@frappe.whitelist()
 def send_chatwoot_message(conversation_id: int, content: str):
 	if not frappe.db.exists("DocType", "Chatwoot Settings"):
 		frappe.throw(_("Chatwoot integration is not installed."))

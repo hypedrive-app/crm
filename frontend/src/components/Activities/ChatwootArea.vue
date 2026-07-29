@@ -16,23 +16,25 @@
       </Button>
     </div>
     <div
-      v-for="message in messages"
-      :key="message.id"
-      class="activity group flex gap-2"
-      :class="[message.direction == 'outgoing' ? 'flex-row-reverse' : '', 'mb-3']"
+      v-for="group in groupedMessages"
+      :key="group.key"
+      class="group flex gap-2 mb-3"
+      :class="[group.direction == 'outgoing' ? 'flex-row-reverse' : '']"
     >
       <div
-        :id="`cw-msg-${message.id}`"
-        class="group/message relative max-w-[90%] rounded-md bg-surface-gray-1 text-ink-gray-9 p-1.5 pl-2 text-base shadow-sm"
-      >
+        v-if="group.direction == 'activity'"
+        class="w-full text-center text-2xs text-ink-gray-4"
+        v-html="formatChatwootMessage(group.messages[0].content)"
+      />
+      <div v-else class="flex max-w-[90%] flex-col gap-0.5">
         <div
-          v-if="message.direction == 'activity'"
-          class="text-center text-2xs text-ink-gray-4"
-          v-html="formatChatwootMessage(message.content)"
-        />
-        <template v-else>
+          v-for="(message, idx) in group.messages"
+          :id="`cw-msg-${message.id}`"
+          :key="message.id"
+          class="group/message relative rounded-md bg-surface-gray-1 p-1.5 pl-2 text-base text-ink-gray-9 shadow-sm"
+        >
           <div
-            v-if="message.sender?.name"
+            v-if="idx === 0 && message.sender?.name"
             class="mb-0.5 text-2xs text-ink-gray-5"
           >
             {{ message.sender.name }}
@@ -59,14 +61,22 @@
               </a>
             </div>
           </div>
-          <div class="-mb-1 mt-1 flex shrink-0 items-end justify-end gap-1 text-ink-gray-5">
-            <Tooltip :text="formatDate(message.created_at * 1000, 'ddd, MMM D, YYYY')">
+          <div
+            class="-mb-1 mt-1 flex shrink-0 items-end justify-end gap-1 text-ink-gray-5"
+          >
+            <Tooltip
+              :text="formatDate(message.created_at * 1000, 'ddd, MMM D, YYYY')"
+            >
               <div class="text-2xs">
                 {{ formatDate(message.created_at * 1000, 'hh:mm a') }}
               </div>
             </Tooltip>
+            <DeliveryTick
+              v-if="group.direction == 'outgoing'"
+              :status="message.status"
+            />
           </div>
-        </template>
+        </div>
       </div>
     </div>
   </div>
@@ -74,15 +84,51 @@
 
 <script setup>
 import { Tooltip, Button } from 'frappe-ui'
+import { computed, h } from 'vue'
 import { formatDate, sanitizeHTML } from '@/utils'
 
-defineProps({
+const props = defineProps({
   messages: { type: Array, default: () => [] },
   conversations: { type: Array, default: () => [] },
   activeConversationId: { type: [Number, String], default: null },
 })
 
 defineEmits(['selectConversation'])
+
+// Consecutive messages from the same sender within a 60s window merge into
+// one visual run (one avatar/name label, tight inner gap) — matching
+// WhatsApp Web / Stream Chat's published default grouping window. Activity
+// (system) messages and a message_type change (incoming <-> outgoing) always
+// start a new group even if inside the window.
+const GROUP_WINDOW_SECONDS = 60
+
+const groupedMessages = computed(() => {
+  const groups = []
+  for (const message of props.messages) {
+    const direction = message.direction || 'unknown'
+    const last = groups[groups.length - 1]
+    const sameBucket =
+      last &&
+      last.direction === direction &&
+      direction !== 'activity' &&
+      last.senderId === (message.sender?.id ?? message.sender?.name ?? null) &&
+      message.created_at - last.lastCreatedAt <= GROUP_WINDOW_SECONDS
+
+    if (sameBucket) {
+      last.messages.push(message)
+      last.lastCreatedAt = message.created_at
+    } else {
+      groups.push({
+        key: `${direction}-${message.id}`,
+        direction,
+        senderId: message.sender?.id ?? message.sender?.name ?? null,
+        lastCreatedAt: message.created_at,
+        messages: [message],
+      })
+    }
+  }
+  return groups
+})
 
 function openFileInAnotherTab(url) {
   window.open(url, '_blank')
@@ -92,5 +138,37 @@ function formatChatwootMessage(message) {
   if (!message) return ''
   message = message.replace(/\n/g, '<br>')
   return sanitizeHTML(message)
+}
+
+// Delivery tick — visual state only (no text label), mirroring WhatsApp's own
+// semantics: clock (sending/pending local echo) -> single check (sent) ->
+// double check grey (delivered) -> double check blue (read) -> red ! (failed).
+// Chatwoot's message object carries this natively as `status`.
+const DeliveryTick = {
+  props: { status: { type: String, default: '' } },
+  render() {
+    const status = this.status
+    if (status === 'failed') {
+      return h('span', {
+        class: 'lucide-alert-circle size-3.5 text-ink-red-3',
+        title: __('Failed to send'),
+      })
+    }
+    if (status === 'read') {
+      return h('span', {
+        class: 'lucide-check-check size-3.5 text-ink-blue-4',
+      })
+    }
+    if (status === 'delivered') {
+      return h('span', {
+        class: 'lucide-check-check size-3.5 text-ink-gray-5',
+      })
+    }
+    if (status === 'sent') {
+      return h('span', { class: 'lucide-check size-3.5 text-ink-gray-5' })
+    }
+    // sending / progress / no status yet -> local-echo "pending" clock
+    return h('span', { class: 'lucide-clock size-3 text-ink-gray-4' })
+  },
 }
 </script>

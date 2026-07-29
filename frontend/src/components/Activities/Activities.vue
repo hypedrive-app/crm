@@ -23,6 +23,17 @@
     </div>
     <div
       v-else-if="
+        title == 'Chatwoot' &&
+        (chatwootConversations.loading || chatwootMessages.loading) &&
+        !chatwootConversations.data?.length
+      "
+      class="flex flex-1 flex-col items-center justify-center gap-3 text-2xl-medium text-ink-gray-4"
+    >
+      <LoadingIndicator class="h-6 w-6" />
+      <span>{{ __('Loading...') }}</span>
+    </div>
+    <div
+      v-else-if="
         activities?.length ||
         (whatsappMessages.data?.length && title == 'WhatsApp') ||
         (title == 'Chatwoot' && (chatwootConversations.data?.length || chatwootMessages.data?.messages?.length))
@@ -473,6 +484,7 @@ import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
+import ChatwootIcon from '@/components/Icons/ChatwootIcon.vue'
 import EventArea from '@/components/Activities/EventArea.vue'
 import WhatsAppArea from '@/components/Activities/WhatsAppArea.vue'
 import WhatsAppBox from '@/components/Activities/WhatsAppBox.vue'
@@ -608,12 +620,67 @@ const chatwootMessages = createResource({
   cache: ['chatwoot_messages', props.docname],
   makeParams: () => ({ conversation_id: activeChatwootConversationId.value }),
   auto: false,
-  onSuccess: () => nextTick(() => scroll()),
+  onSuccess: (data) => {
+    chatwootSinceId.value = maxMessageId(data?.messages)
+    nextTick(() => scroll())
+  },
 })
+
+// Cursor for incremental polling (see get_new_chatwoot_messages /
+// frappe_chatwoot's bounded after=-drain). Seeded from the max message id of
+// the last full load; advanced on every incremental merge so a realtime tick
+// only ever pulls what's new instead of refetching full history each time.
+const chatwootSinceId = ref(null)
+
+function maxMessageId(messages) {
+  if (!messages?.length) return null
+  return messages.reduce((max, m) => (m.id > max ? m.id : max), messages[0].id)
+}
 
 function selectChatwootConversation(conversationId) {
   activeChatwootConversationId.value = conversationId
+  chatwootSinceId.value = null
   chatwootMessages.fetch()
+}
+
+function fetchNewChatwootMessages() {
+  if (!activeChatwootConversationId.value) return
+  if (!chatwootSinceId.value) {
+    // No cursor yet (tab never fully loaded) — fall back to a normal load.
+    chatwootMessages.fetch()
+    return
+  }
+  createResource({
+    url: 'crm.api.chatwoot.get_new_chatwoot_messages',
+    params: {
+      conversation_id: activeChatwootConversationId.value,
+      since_id: chatwootSinceId.value,
+    },
+    auto: true,
+    onSuccess: (result) => {
+      const incoming = result?.messages || []
+      if (incoming.length && chatwootMessages.data) {
+        const existingIds = new Set(
+          chatwootMessages.data.messages.map((m) => m.id),
+        )
+        const merged = [
+          ...chatwootMessages.data.messages,
+          ...incoming.filter((m) => !existingIds.has(m.id)),
+        ]
+        chatwootMessages.data.messages = merged
+        nextTick(() => scroll())
+      }
+      if (result?.max_id_seen) {
+        chatwootSinceId.value = result.max_id_seen
+      }
+      // Drain wasn't finished (>100 backlog) — immediately continue rather
+      // than waiting for the next realtime tick, per get_new_messages'
+      // documented truncated=True contract.
+      if (result?.truncated) {
+        fetchNewChatwootMessages()
+      }
+    },
+  })
 }
 
 watch(
@@ -647,10 +714,11 @@ onMounted(() => {
     // message body — see frappe_chatwoot's realtime_bridge.py docstring).
     // We don't know which conversation belongs to THIS record client-side
     // without re-querying, so refetch the conversation list; if the active
-    // conversation matches, also refetch its messages.
+    // conversation matches, pull only what's new via the incremental
+    // since_id cursor rather than reloading the full thread on every tick.
     chatwootConversations.reload()
     if (data.conversation_id === activeChatwootConversationId.value) {
-      chatwootMessages.reload()
+      fetchNewChatwootMessages()
     }
   })
 
@@ -810,6 +878,8 @@ const emptyText = computed(() => {
     text = 'No Attachments Found'
   } else if (title.value == 'WhatsApp') {
     text = 'No WhatsApp Messages Found'
+  } else if (title.value == 'Chatwoot') {
+    text = 'No Chatwoot Conversations Found'
   }
   return text
 })
@@ -836,6 +906,9 @@ const emptyTextDescription = computed(() => {
       'No files have been attached yet. Upload files to see them here.'
   } else if (title.value == 'WhatsApp') {
     description = 'Start a conversation now!'
+  } else if (title.value == 'Chatwoot') {
+    description =
+      'No Chatwoot conversation was found for this contact. Conversations started on connected channels will appear here.'
   }
   return description
 })
@@ -858,6 +931,8 @@ const emptyTextIcon = computed(() => {
     icon = AttachmentIcon
   } else if (title.value == 'WhatsApp') {
     icon = WhatsAppIcon
+  } else if (title.value == 'Chatwoot') {
+    icon = ChatwootIcon
   }
   return h(icon, { class: 'text-ink-gray-4' })
 })
