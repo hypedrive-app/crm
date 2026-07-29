@@ -7,6 +7,7 @@ import LogoSparkpost from '@/images/sparkpost.webp'
 import LogoYahoo from '@/images/yahoo.png'
 import LogoYandex from '@/images/yandex.png'
 import LogoFrappeMail from '@/images/frappe-mail.svg'
+import LogoGenericMail from '@/images/generic-mail.svg'
 
 const fixedFields = [
   {
@@ -172,6 +173,13 @@ export const emailIcon = {
   Yandex: LogoYandex,
   'Frappe Mail': LogoFrappeMail,
 }
+
+// Fallback icon for email accounts whose `service` isn't one of the
+// hardcoded providers above (e.g. generic SMTP/IMAP accounts, where
+// `service` is an empty string). Without this, `emailIcon[service]`
+// lookups for those accounts return `undefined` and render a broken
+// `<img src="undefined">`.
+export const genericEmailIcon = LogoGenericMail
 
 export function validateInputs(state, isCustom) {
   if (!state.email_account_name) {

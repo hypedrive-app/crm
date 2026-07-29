@@ -8,7 +8,7 @@
     </div>
     <div class="w-fit">
       <EmailProviderIcon
-        :logo="emailIcon[accountData.service]"
+        :logo="emailIcon[accountData.service] || genericEmailIcon"
         :label="accountData.service"
       />
     </div>
@@ -87,6 +87,7 @@ import { call, toast } from 'frappe-ui'
 import EmailProviderIcon from './EmailProviderIcon.vue'
 import {
   emailIcon,
+  genericEmailIcon,
   services,
   popularProviderFields,
   customProviderFields,

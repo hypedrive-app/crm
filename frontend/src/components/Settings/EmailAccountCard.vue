@@ -4,7 +4,9 @@
   >
     <!-- avatar and name -->
     <div class="flex items-center justify-between gap-2">
-      <EmailProviderIcon :logo="emailIcon[emailAccount.service]" />
+      <EmailProviderIcon
+        :logo="emailIcon[emailAccount.service] || genericEmailIcon"
+      />
       <div>
         <div class="text-p-base text-ink-gray-8">
           {{ emailAccount.email_account_name }}
@@ -20,7 +22,7 @@
 </template>
 
 <script setup>
-import { emailIcon } from './emailConfig'
+import { emailIcon, genericEmailIcon } from './emailConfig'
 import EmailProviderIcon from './EmailProviderIcon.vue'
 import { computed } from 'vue'
 
