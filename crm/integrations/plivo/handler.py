@@ -183,6 +183,26 @@ def handle_hangup(**kwargs):
 				medium=call_payload.get("To"),
 				status=get_call_log_status(call_payload),
 			)
+
+		# Recording's own callback_url (registered in start_recording) is
+		# unreliable in practice — confirmed live (2026-07-29): Plivo's Record/
+		# API accepts the request and genuinely records the call (verified via
+		# GET /Recording/, which lists the finished file with a real
+		# recording_url), but the completion webhook itself never arrives —
+		# zero "Plivo Call Recording" Integration Request log entries across
+		# multiple real test calls, despite the answer/hangup webhooks for the
+		# same calls working correctly. Rather than depend on a callback that
+		# doesn't fire, poll Plivo's own Recording list for this call_uuid
+		# instead — a background job (not a blocking sleep in the webhook
+		# response) since the recording file isn't ready the instant the call
+		# ends.
+		if frappe.db.get_single_value("CRM Plivo Settings", "record_call"):
+			frappe.enqueue(
+				fetch_recording_url,
+				queue="short",
+				call_uuid=call_payload.get("CallUUID"),
+				enqueue_after_commit=True,
+			)
 	except Exception:
 		request_log.status = "Failed"
 		request_log.error = frappe.get_traceback()
@@ -192,6 +212,50 @@ def handle_hangup(**kwargs):
 	finally:
 		request_log.save(ignore_permissions=True)
 		frappe.db.commit()
+
+
+def fetch_recording_url(call_uuid: str, max_attempts: int = 6, delay_seconds: int = 10):
+	"""Poll Plivo's Recording list for call_uuid and persist recording_url onto
+	the matching CRM Call Log once found. Plivo needs a few seconds to finish
+	processing/uploading the recording after hangup, so this retries with a
+	fixed delay between attempts rather than assuming it's ready on the first
+	check. Runs entirely inside a background worker (enqueued via
+	handle_hangup with enqueue_after_commit=True) — the sleep here does not
+	block the webhook response or any web request."""
+	import time
+
+	settings = get_plivo_settings()
+
+	for attempt in range(1, max_attempts + 1):
+		if not frappe.db.exists("CRM Call Log", call_uuid):
+			return
+
+		try:
+			response = requests.get(
+				f"https://api.plivo.com/v1/Account/{settings.auth_id}/Recording/",
+				auth=(settings.auth_id, settings.get_password("auth_token")),
+				params={"call_uuid": call_uuid},
+				timeout=10,
+			)
+			response.raise_for_status()
+			recordings = response.json().get("objects") or []
+		except requests.exceptions.RequestException:
+			recordings = []
+
+		if recordings:
+			frappe.db.set_value(
+				"CRM Call Log", call_uuid, "recording_url", recordings[0]["recording_url"]
+			)
+			frappe.db.commit()
+			return
+
+		if attempt < max_attempts:
+			time.sleep(delay_seconds)
+
+	frappe.log_error(
+		title="Plivo recording never appeared",
+		message=f"call_uuid={call_uuid}, gave up after {max_attempts} attempts",
+	)
 
 
 # Recording ready — fired by Plivo's Record API's own callback_url once the
