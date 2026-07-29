@@ -58,7 +58,15 @@
                 })
             "
           >
-            <Badge v-if="label" :label="label" variant="subtle" theme="gray" />
+            <Badge v-if="label" :label="label" variant="subtle" theme="gray">
+              <template v-if="getPlatformLogoUrl(label)" #prefix>
+                <img
+                  :src="getPlatformLogoUrl(label)"
+                  class="size-3 rounded-sm"
+                  alt=""
+                />
+              </template>
+            </Badge>
           </div>
           <div
             v-else-if="column.key === 'store_url' && label"
@@ -137,6 +145,7 @@
 import ListBulkActions from '@/components/ListBulkActions.vue'
 import ListRows from '@/components/ListViews/ListRows.vue'
 import { isTranslatable, formatDuration, openWebsite } from '@/utils'
+import { getPlatformLogoUrl } from '@/utils/platformLogo'
 import {
   Avatar,
   Badge,
