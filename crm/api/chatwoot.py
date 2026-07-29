@@ -3,7 +3,7 @@
 Mirrors crm/api/whatsapp.py's exact contract shape (is_X_installed /
 is_X_enabled / get_X_messages / validate_access), except every read here
 proxies LIVE to Chatwoot's REST API via frappe_chatwoot's whitelisted API
-(frappe_chatwoot.api.chatwoot) instead of running frappe.get_all against a
+(frappe_chatwoot.frappe_chatwoot.api.chatwoot) instead of running frappe.get_all against a
 locally-duplicated message doctype — frappe_chatwoot ships no such doctype
 by design (Chatwoot itself stays the system of record for conversation
 state; see frappe_chatwoot/README.md).
@@ -70,7 +70,7 @@ def get_chatwoot_conversations(reference_doctype: str, reference_name: str):
 	if not frappe.db.exists("DocType", "Chatwoot Settings"):
 		return []
 
-	from frappe_chatwoot.api.chatwoot import get_conversations_for_contact
+	from frappe_chatwoot.frappe_chatwoot.api.chatwoot import get_conversations_for_contact
 
 	return get_conversations_for_contact(reference_doctype, reference_name)
 
@@ -80,7 +80,7 @@ def get_chatwoot_messages(conversation_id: int, before: int = None):
 	if not frappe.db.exists("DocType", "Chatwoot Settings"):
 		return {"meta": {}, "messages": []}
 
-	from frappe_chatwoot.api.chatwoot import get_messages
+	from frappe_chatwoot.frappe_chatwoot.api.chatwoot import get_messages
 
 	return get_messages(conversation_id, before=before)
 
@@ -90,12 +90,12 @@ def get_new_chatwoot_messages(conversation_id: int, since_id: int = None):
 	"""Incremental poll proxy — used on realtime ('chatwoot_message' socket
 	event) refetch so an active thread only pulls what's new instead of the
 	full message history on every poll tick. See
-	frappe_chatwoot.api.chatwoot.get_new_messages for the bounded drain-loop
+	frappe_chatwoot.frappe_chatwoot.api.chatwoot.get_new_messages for the bounded drain-loop
 	contract (truncated=True means call again immediately)."""
 	if not frappe.db.exists("DocType", "Chatwoot Settings"):
 		return {"messages": [], "meta": {}, "max_id_seen": since_id, "truncated": False}
 
-	from frappe_chatwoot.api.chatwoot import get_new_messages
+	from frappe_chatwoot.frappe_chatwoot.api.chatwoot import get_new_messages
 
 	return get_new_messages(conversation_id, since_id=since_id)
 
@@ -105,7 +105,7 @@ def send_chatwoot_message(conversation_id: int, content: str):
 	if not frappe.db.exists("DocType", "Chatwoot Settings"):
 		frappe.throw(_("Chatwoot integration is not installed."))
 
-	from frappe_chatwoot.api.chatwoot import send_message
+	from frappe_chatwoot.frappe_chatwoot.api.chatwoot import send_message
 
 	return send_message(conversation_id, content)
 
