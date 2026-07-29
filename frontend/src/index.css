@@ -43,4 +43,16 @@
    unverified intermediate stop. */
 [data-theme='dark'] {
   --ink-gray-5: var(--ink-gray-6);
+
+  /* frappe-ui dark-theme token bug (upstream, verified against
+     frappe-ui/tailwind/generated/colors.json): themedVariables.dark.
+     surface.sidebar resolves to "neutral/transparent" (#ffffff00) — a
+     stub that was apparently never filled in with a real dark fill,
+     unlike the light theme's solid lightMode/gray/50. Since nothing
+     above the sidebar (html/body/app shell) paints a background either,
+     the sidebar rendered as the browser's bare white canvas instead of
+     a dark surface. --surface-elevation-1 is a real, already-used dark
+     fill one step lighter than --surface-base — the same relationship
+     the light theme has between the sidebar and the main content pane. */
+  --surface-sidebar: var(--surface-elevation-1);
 }
