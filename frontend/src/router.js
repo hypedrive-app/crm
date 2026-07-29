@@ -97,6 +97,12 @@ const routes = [
     props: true,
   },
   {
+    alias: '/storefronts',
+    path: '/storefronts/view/:viewType?',
+    name: 'Storefronts',
+    component: () => import('@/pages/Storefronts.vue'),
+  },
+  {
     alias: '/call-logs',
     path: '/call-logs/view/:viewType?',
     name: 'Call Logs',
@@ -238,6 +244,7 @@ router.beforeEach(async (to, from, next) => {
       'Deals',
       'Contacts',
       'Organizations',
+      'Storefronts',
       'Notes',
       'Tasks',
       'Call Logs',
@@ -256,6 +263,7 @@ router.beforeEach(async (to, from, next) => {
         Deals: 'CRM Deal',
         Contacts: 'Contact',
         Organizations: 'CRM Organization',
+        Storefronts: 'CRM Storefront',
         Notes: 'FCRM Note',
         Tasks: 'CRM Task',
         'Call Logs': 'CRM Call Log',

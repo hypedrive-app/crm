@@ -167,6 +167,13 @@
           :columns="columns"
           :options="{ selectable: false, showTooltip: false }"
         />
+        <StorefrontsListView
+          v-if="tab.label === 'Storefronts' && rows.length"
+          class="mt-4"
+          :rows="rows"
+          :columns="columns"
+          :options="{ selectable: false, showTooltip: false }"
+        />
         <EmptyState
           v-if="!rows.length"
           :icon="tab.icon"
@@ -197,10 +204,12 @@ import Icon from '@/components/Icon.vue'
 import LayoutHeader from '@/components/LayoutHeader.vue'
 import DealsListView from '@/components/ListViews/DealsListView.vue'
 import ContactsListView from '@/components/ListViews/ContactsListView.vue'
+import StorefrontsListView from '@/components/ListViews/StorefrontsListView.vue'
 import WebsiteIcon from '@/components/Icons/WebsiteIcon.vue'
 import CameraIcon from '@/components/Icons/CameraIcon.vue'
 import DealsIcon from '@/components/Icons/DealsIcon.vue'
 import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
+import StorefrontsIcon from '@/components/Icons/StorefrontsIcon.vue'
 import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
 import CustomActions from '@/components/CustomActions.vue'
 import EnrichFromWebsite from '@/components/EnrichFromWebsite.vue'
@@ -400,6 +409,11 @@ const tabs = [
     icon: ContactsIcon,
     count: computed(() => contacts.data?.length),
   },
+  {
+    label: 'Storefronts',
+    icon: StorefrontsIcon,
+    count: computed(() => storefronts.data?.length),
+  },
 ]
 
 const deals = createListResource({
@@ -446,20 +460,35 @@ const contacts = createListResource({
   auto: true,
 })
 
+const storefronts = createListResource({
+  type: 'list',
+  doctype: 'CRM Storefront',
+  cache: ['storefronts', props.organizationId],
+  fields: ['name', 'organization', 'platform', 'store_url', 'modified'],
+  filters: {
+    organization: props.organizationId,
+  },
+  orderBy: 'platform asc',
+  pageLength: 20,
+  auto: true,
+})
+
 const rows = computed(() => {
-  let list = !tabIndex.value ? deals : contacts
+  let list = [deals, contacts, storefronts][tabIndex.value] || deals
 
   if (!list.data) return []
 
   return list.data.map((row) => {
-    return !tabIndex.value ? getDealRowObject(row) : getContactRowObject(row)
+    if (tabIndex.value === 0) return getDealRowObject(row)
+    if (tabIndex.value === 1) return getContactRowObject(row)
+    return getStorefrontRowObject(row)
   })
 })
 
 const { getFormattedCurrency } = getMeta('CRM Deal')
 
 const columns = computed(() => {
-  return tabIndex.value === 0 ? dealColumns : contactColumns
+  return [dealColumns, contactColumns, storefrontColumns][tabIndex.value]
 })
 
 function getDealRowObject(deal) {
@@ -499,6 +528,18 @@ function getContactRowObject(contact) {
       logo: organization.doc?.organization_logo,
     },
     modified: timestampCell(contact.modified),
+  }
+}
+
+function getStorefrontRowObject(storefront) {
+  return {
+    name: storefront.name,
+    platform: storefront.platform,
+    store_url: {
+      label: website(storefront.store_url),
+      url: storefront.store_url,
+    },
+    modified: timestampCell(storefront.modified),
   }
 }
 
@@ -561,6 +602,24 @@ const contactColumns = [
     label: __('Organization'),
     key: 'company_name',
     width: '12rem',
+  },
+  {
+    label: __('Last Modified'),
+    key: 'modified',
+    width: '8rem',
+  },
+]
+
+const storefrontColumns = [
+  {
+    label: __('Platform'),
+    key: 'platform',
+    width: '14rem',
+  },
+  {
+    label: __('Store URL'),
+    key: 'store_url',
+    width: '18rem',
   },
   {
     label: __('Last Modified'),
