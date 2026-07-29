@@ -1,5 +1,28 @@
 <template>
-  <div class="flex items-end gap-2 px-3 py-2.5 sm:px-10" v-bind="$attrs">
+  <div
+    v-if="conversationId && !canReply"
+    class="flex items-center gap-2 px-3 py-2.5 sm:px-10 text-p-sm text-ink-gray-5"
+  >
+    <span
+      class="lucide-clock size-4 shrink-0 text-ink-gray-4"
+      aria-hidden="true"
+    />
+    {{
+      __(
+        "This conversation is outside the reply window (common on WhatsApp after 24 hours of inactivity). The customer needs to message first, or send a template message to reopen it.",
+      )
+    }}
+  </div>
+  <div v-else class="flex items-end gap-2 px-3 py-2.5 sm:px-10" v-bind="$attrs">
+    <div class="flex h-8 shrink-0 items-center gap-2">
+      <Tooltip :text="__('Canned Responses')">
+        <ChatwootIcon
+          class="size-4.5 cursor-pointer text-ink-gray-5 hover:text-ink-gray-7"
+          :class="{ 'pointer-events-none opacity-40': !conversationId }"
+          @click="showCannedResponses = true"
+        />
+      </Tooltip>
+    </div>
     <Textarea
       ref="textareaRef"
       v-model="content"
@@ -16,23 +39,31 @@
     />
     <Button
       variant="solid"
+      class="shrink-0"
       :disabled="!conversationId || !content"
       @click="sendTextMessage()"
     >
       {{ __('Send') }}
     </Button>
   </div>
+  <ChatwootCannedResponseModal
+    v-model="showCannedResponses"
+    @send="useCannedResponse"
+  />
 </template>
 
 <script setup>
+import ChatwootIcon from '@/components/Icons/ChatwootIcon.vue'
+import ChatwootCannedResponseModal from '@/components/Modals/ChatwootCannedResponseModal.vue'
 import { useTelemetry } from 'frappe-ui/frappe'
-import { Textarea, Button, createResource, toast } from 'frappe-ui'
+import { Textarea, Button, Tooltip, createResource, toast } from 'frappe-ui'
 import { ref, nextTick } from 'vue'
 
 const props = defineProps({
   doctype: { type: String, required: true },
   docname: { type: String, required: true },
   conversationId: { type: [Number, String], default: null },
+  canReply: { type: Boolean, default: true },
 })
 
 const chatwoot = defineModel('chatwoot', { type: Object, default: () => ({}) })
@@ -43,6 +74,7 @@ const rows = ref(1)
 const textareaRef = ref(null)
 const content = ref('')
 const placeholder = ref(__('Type your message here...'))
+const showCannedResponses = ref(false)
 
 // IME composition guard: while an IME (Hindi/Japanese/Chinese input, or an
 // emoji-picker candidate list) is composing, the Enter keystroke that
@@ -66,6 +98,12 @@ function onKeydown(event) {
 }
 
 function show() {
+  nextTick(() => textareaRef.value?.el?.focus())
+}
+
+function useCannedResponse(text) {
+  content.value = content.value ? `${content.value}\n${text}` : text
+  showCannedResponses.value = false
   nextTick(() => textareaRef.value?.el?.focus())
 }
 

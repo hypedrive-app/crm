@@ -146,6 +146,19 @@ def send_chatwoot_message(reference_doctype: str, reference_name: str, conversat
 	return send_message(conversation_id, content)
 
 
+@frappe.whitelist()
+def get_chatwoot_canned_responses():
+	"""Chatwoot's native quick-reply feature — the equivalent of WhatsApp's
+	template picker, but no reference-doc binding needed since these are an
+	account-level list, not scoped to any particular Lead/Deal."""
+	if not frappe.db.exists("DocType", "Chatwoot Settings"):
+		return []
+
+	from frappe_chatwoot.frappe_chatwoot.api.chatwoot import get_canned_responses
+
+	return get_canned_responses()
+
+
 def add_roles():
 	"""Registered in crm/hooks.py's after_migrate, mirroring
 	crm.api.whatsapp.add_roles exactly: grant CRM's own sales roles explicit

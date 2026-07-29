@@ -24,7 +24,7 @@
           v-model="callMedium"
           type="select"
           :label="__('Calling Medium')"
-          :options="['Twilio', 'Exotel', 'Plivo']"
+          :options="mediumOptions"
         />
         <div class="flex flex-col gap-1">
           <FormControl
@@ -49,7 +49,7 @@ import ExotelCallUI from '@/components/Telephony/ExotelCallUI.vue'
 import PlivoCallUI from '@/components/Telephony/PlivoCallUI.vue'
 import { defaultCallingMedium, useTelephony } from '@/composables/telephony'
 import { globalStore } from '@/stores/global'
-import { FormControl, call, toast } from 'frappe-ui'
+import { FormControl, call, createResource, toast } from 'frappe-ui'
 import { computed, nextTick, ref, watch } from 'vue'
 
 const { setMakeCall } = globalStore()
@@ -65,13 +65,45 @@ const isDefaultMedium = ref(false)
 const show = ref(false)
 const mobileNumber = ref('')
 
-const enabledIntegrations = computed(() =>
-  [
+// Plivo browser calling is a separate opt-in capability on top of the bare
+// "plivo" provider-enabled flag (see crm.integrations.api.
+// is_call_integration_enabled) — an org can have Plivo enabled for
+// server-side calling only, with browser calling off. Fetched once; the
+// medium list below only offers "Plivo (Browser)" when this is genuinely on,
+// so agents are never shown a choice that would fail immediately.
+const plivoBrowserCallingEnabled = ref(false)
+createResource({
+  url: 'crm.integrations.api.is_call_integration_enabled',
+  cache: 'Is Call Integration Enabled',
+  auto: true,
+  onSuccess: (data) => {
+    plivoBrowserCallingEnabled.value = Boolean(data.plivo_browser_calling_enabled)
+  },
+})
+
+// Plivo genuinely offers TWO distinct calling mechanisms behind one
+// "provider enabled" flag — a headset/browser call (PlivoCallUI's WebRTC
+// client) and a phone call (Exotel-style: agent's real phone rings first).
+// These aren't interchangeable, so both need to be explicit, separately
+// selectable options rather than collapsing to whichever the UI picks by
+// default — that's what silently hid the phone-call option entirely before.
+const enabledIntegrations = computed(() => {
+  const options = [
     { key: 'twilio', label: 'Twilio', ref: twilio },
     { key: 'exotel', label: 'Exotel', ref: exotel },
-    { key: 'plivo', label: 'Plivo', ref: plivo },
-  ].filter(({ key }) => isEnabled(key)),
-)
+  ].filter(({ key }) => isEnabled(key))
+
+  if (isEnabled('plivo')) {
+    if (plivoBrowserCallingEnabled.value) {
+      options.push({ key: 'plivo', label: 'Plivo (Browser)', ref: plivo, mode: 'browser' })
+    }
+    options.push({ key: 'plivo', label: 'Plivo (Phone)', ref: plivo, mode: 'server' })
+  }
+
+  return options
+})
+
+const mediumOptions = computed(() => enabledIntegrations.value.map((o) => o.label))
 
 function makeCall(number) {
   if (enabledIntegrations.value.length > 1 && !defaultCallingMedium.value) {
@@ -102,8 +134,12 @@ function makeCallUsing() {
     exotel.value.makeOutgoingCall(mobileNumber.value)
   }
 
-  if (callMedium.value === 'Plivo') {
+  if (callMedium.value === 'Plivo (Browser)') {
     plivo.value.makeOutgoingCall(mobileNumber.value)
+  }
+
+  if (callMedium.value === 'Plivo (Phone)') {
+    plivo.value.makeServerCall(mobileNumber.value)
   }
   show.value = false
 }

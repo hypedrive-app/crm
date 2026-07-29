@@ -50,7 +50,8 @@
               { label: __(''), value: '' },
               { label: __('Twilio'), value: 'Twilio' },
               { label: __('Exotel'), value: 'Exotel' },
-              { label: __('Plivo'), value: 'Plivo' },
+              { label: __('Plivo (Browser)'), value: 'Plivo (Browser)' },
+              { label: __('Plivo (Phone)'), value: 'Plivo (Phone)' },
             ]"
             :placeholder="__('Select Medium')"
           />

@@ -440,6 +440,7 @@
       :doctype="doctype"
       :docname="docname"
       :conversation-id="activeChatwootConversationId"
+      :can-reply="activeChatwootCanReply"
       @scroll="scroll"
     />
   </div>
@@ -600,6 +601,19 @@ watch(
 )
 
 const activeChatwootConversationId = ref(null)
+
+// Chatwoot itself reports whether a conversation currently accepts new agent
+// replies (e.g. false once a WhatsApp conversation has been outside Meta's
+// 24-hour customer-service window for a while — a real, common WhatsApp
+// Business API constraint, not a bug in our integration). We weren't reading
+// this field at all, so a legitimately un-repliable conversation looked
+// identical to a broken/loading reply box with zero explanation.
+const activeChatwootCanReply = computed(() => {
+  const conversation = chatwootConversations.data?.find(
+    (c) => c.id === activeChatwootConversationId.value,
+  )
+  return conversation ? conversation.can_reply !== false : true
+})
 
 const chatwootConversations = createResource({
   url: 'crm.api.chatwoot.get_chatwoot_conversations',

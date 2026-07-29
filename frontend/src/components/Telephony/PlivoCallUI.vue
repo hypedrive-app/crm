@@ -161,7 +161,7 @@ import { useDoctypeModal } from '@/composables/doctypeModal'
 import Plivo from 'plivo-browser-sdk'
 import { useDraggable, useWindowSize } from '@vueuse/core'
 import { useTelemetry } from 'frappe-ui/frappe'
-import { Avatar, call, createResource } from 'frappe-ui'
+import { Avatar, call, createResource, toast } from 'frappe-ui'
 import { ref, watch } from 'vue'
 
 const { capture } = useTelemetry()
@@ -390,6 +390,21 @@ function makeOutgoingCall(number) {
   client.call(number, {})
 }
 
+// Server-side (Exotel-style) calling: rings the agent's own real phone first
+// via crm.integrations.plivo.handler.make_a_call, then bridges to the
+// destination — no browser SDK / headset involved at all, a completely
+// separate code path from makeOutgoingCall above. Exposed as a distinct
+// method (not a mode flag on makeOutgoingCall) since CallUI.vue needs to
+// offer both as explicit choices for the same "Plivo" provider.
+async function makeServerCall(number) {
+  try {
+    await call('crm.integrations.plivo.handler.make_a_call', { to_number: number })
+    toast.success(__('Calling your phone — answer it to connect to {0}', [number]))
+  } catch (err) {
+    toast.error(err.messages?.[0] || __('Failed to place call'))
+  }
+}
+
 function toggleCallWindow() {
   showCallPopup.value = !showCallPopup.value
   showSmallCallWindow.value = !showSmallCallWindow.value
@@ -403,7 +418,7 @@ watch(
   { immediate: true },
 )
 
-defineExpose({ makeOutgoingCall, setup: startupClient })
+defineExpose({ makeOutgoingCall, makeServerCall, setup: startupClient })
 </script>
 
 <style scoped>

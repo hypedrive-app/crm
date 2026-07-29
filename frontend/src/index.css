@@ -29,3 +29,18 @@
 .menu-content {
   z-index: 101;
 }
+
+/* frappe-ui dark-theme token bug (upstream, verified against
+   espresso-v2-design-tokens/Styles.Dark.tokens.json): --ink-gray-4 and
+   --ink-gray-5 both resolve to the same {dark.gray.400} primitive, even
+   though the light theme keeps them visually distinct. In practice this
+   makes Avatar's default "gray" variant (bg-surface-gray-2 text-ink-gray-5)
+   render as ~3.4:1 contrast in dark mode — grey text nearly invisible on a
+   grey background, most visible as blank-looking initials in Avatar
+   circles. --ink-gray-5 is meant to sit one step lighter than gray-4 (the
+   scale otherwise steps cleanly: gray-6 already uses {dark.gray.300}), so
+   redefine it to gray-6's actual value rather than inventing an
+   unverified intermediate stop. */
+[data-theme='dark'] {
+  --ink-gray-5: var(--ink-gray-6);
+}

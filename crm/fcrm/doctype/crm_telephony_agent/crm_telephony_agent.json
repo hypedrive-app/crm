@@ -103,7 +103,7 @@
    "fieldname": "default_medium",
    "fieldtype": "Select",
    "label": "Default Medium",
-   "options": "\nTwilio\nExotel\nPlivo"
+   "options": "\nTwilio\nExotel\nPlivo (Browser)\nPlivo (Phone)"
   },
   {
    "default": "Computer",
