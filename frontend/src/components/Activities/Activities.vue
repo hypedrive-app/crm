@@ -437,6 +437,8 @@
       v-if="title == 'Chatwoot'"
       ref="chatwootBox"
       v-model:chatwoot="chatwootMessages"
+      :doctype="doctype"
+      :docname="docname"
       :conversation-id="activeChatwootConversationId"
       @scroll="scroll"
     />
@@ -618,7 +620,11 @@ const chatwootConversations = createResource({
 const chatwootMessages = createResource({
   url: 'crm.api.chatwoot.get_chatwoot_messages',
   cache: ['chatwoot_messages', props.docname],
-  makeParams: () => ({ conversation_id: activeChatwootConversationId.value }),
+  makeParams: () => ({
+    reference_doctype: props.doctype,
+    reference_name: props.docname,
+    conversation_id: activeChatwootConversationId.value,
+  }),
   auto: false,
   onSuccess: (data) => {
     chatwootSinceId.value = maxMessageId(data?.messages)
@@ -653,6 +659,8 @@ function fetchNewChatwootMessages() {
   createResource({
     url: 'crm.api.chatwoot.get_new_chatwoot_messages',
     params: {
+      reference_doctype: props.doctype,
+      reference_name: props.docname,
       conversation_id: activeChatwootConversationId.value,
       since_id: chatwootSinceId.value,
     },

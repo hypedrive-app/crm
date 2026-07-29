@@ -30,6 +30,8 @@ import { Textarea, Button, createResource, toast } from 'frappe-ui'
 import { ref, nextTick } from 'vue'
 
 const props = defineProps({
+  doctype: { type: String, required: true },
+  docname: { type: String, required: true },
   conversationId: { type: [Number, String], default: null },
 })
 
@@ -79,6 +81,8 @@ function sendChatwootMessage() {
   createResource({
     url: 'crm.api.chatwoot.send_chatwoot_message',
     params: {
+      reference_doctype: props.doctype,
+      reference_name: props.docname,
       conversation_id: props.conversationId,
       content: messageContent,
     },

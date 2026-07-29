@@ -75,10 +75,40 @@ def get_chatwoot_conversations(reference_doctype: str, reference_name: str):
 	return get_conversations_for_contact(reference_doctype, reference_name)
 
 
+def _validate_conversation_ownership(reference_doctype: str, reference_name: str, conversation_id: int):
+	"""frappe_chatwoot.get_messages/get_new_messages/send_message intentionally
+	skip reference-doc permission checks (a conversation_id alone carries no
+	reference-doc context — see that module's get_messages docstring) and
+	defer enforcement to the caller, on the assumption CRM only ever passes
+	through conversation_ids it obtained from get_conversations_for_contact.
+	That contract wasn't actually enforced here: this closes it by requiring
+	reference_doctype/reference_name on every conversation_id-keyed call,
+	running the same role+doc-permission check get_chatwoot_conversations
+	uses, and confirming conversation_id is one of THAT reference's live
+	conversations before proxying through — otherwise any authenticated
+	sales user could read or send into an arbitrary conversation just by
+	guessing/observing its numeric id."""
+	validate_access(reference_doctype, reference_name)
+
+	from frappe_chatwoot.frappe_chatwoot.api.chatwoot import get_conversations_for_contact
+
+	conversation_id = frappe.utils.cint(conversation_id)
+	owned_ids = {frappe.utils.cint(c["id"]) for c in get_conversations_for_contact(reference_doctype, reference_name)}
+	if conversation_id not in owned_ids:
+		frappe.throw(
+			_("Not permitted to access this conversation."),
+			frappe.PermissionError,
+		)
+
+
 @frappe.whitelist()
-def get_chatwoot_messages(conversation_id: int, before: int = None):
+def get_chatwoot_messages(
+	reference_doctype: str, reference_name: str, conversation_id: int, before: int = None
+):
 	if not frappe.db.exists("DocType", "Chatwoot Settings"):
 		return {"meta": {}, "messages": []}
+
+	_validate_conversation_ownership(reference_doctype, reference_name, conversation_id)
 
 	from frappe_chatwoot.frappe_chatwoot.api.chatwoot import get_messages
 
@@ -86,7 +116,9 @@ def get_chatwoot_messages(conversation_id: int, before: int = None):
 
 
 @frappe.whitelist()
-def get_new_chatwoot_messages(conversation_id: int, since_id: int = None):
+def get_new_chatwoot_messages(
+	reference_doctype: str, reference_name: str, conversation_id: int, since_id: int = None
+):
 	"""Incremental poll proxy — used on realtime ('chatwoot_message' socket
 	event) refetch so an active thread only pulls what's new instead of the
 	full message history on every poll tick. See
@@ -95,15 +127,19 @@ def get_new_chatwoot_messages(conversation_id: int, since_id: int = None):
 	if not frappe.db.exists("DocType", "Chatwoot Settings"):
 		return {"messages": [], "meta": {}, "max_id_seen": since_id, "truncated": False}
 
+	_validate_conversation_ownership(reference_doctype, reference_name, conversation_id)
+
 	from frappe_chatwoot.frappe_chatwoot.api.chatwoot import get_new_messages
 
 	return get_new_messages(conversation_id, since_id=since_id)
 
 
 @frappe.whitelist()
-def send_chatwoot_message(conversation_id: int, content: str):
+def send_chatwoot_message(reference_doctype: str, reference_name: str, conversation_id: int, content: str):
 	if not frappe.db.exists("DocType", "Chatwoot Settings"):
 		frappe.throw(_("Chatwoot integration is not installed."))
+
+	_validate_conversation_ownership(reference_doctype, reference_name, conversation_id)
 
 	from frappe_chatwoot.frappe_chatwoot.api.chatwoot import send_message
 
