@@ -35,12 +35,23 @@ def _get_recording_credentials(telephony_medium: str) -> tuple | None:
 
 @frappe.whitelist()
 def is_call_integration_enabled():
+	plivo_settings = frappe.db.get_values(
+		"CRM Plivo Settings", "CRM Plivo Settings", ["enabled", "browser_calling_enabled"], as_dict=True
+	)
+	plivo_settings = plivo_settings[0] if plivo_settings else {}
+
 	return {
 		"integrations": {
 			"twilio": bool(frappe.db.get_single_value("CRM Twilio Settings", "enabled")),
 			"exotel": bool(frappe.db.get_single_value("CRM Exotel Settings", "enabled")),
-			"plivo": bool(frappe.db.get_single_value("CRM Plivo Settings", "enabled")),
+			"plivo": bool(plivo_settings.get("enabled")),
 		},
+		# Separate from `integrations` (kept as a pure provider-name -> enabled
+		# map, since that dict is iterated generically elsewhere) — this is a
+		# capability flag on top of the "plivo" provider, not a provider of
+		# its own.
+		"plivo_browser_calling_enabled": bool(plivo_settings.get("enabled"))
+		and bool(plivo_settings.get("browser_calling_enabled")),
 		"default_calling_medium": get_user_default_calling_medium(),
 	}
 

@@ -13,7 +13,11 @@
   "column_break_qwfn",
   "auth_token",
   "section_break_iuct",
-  "webhook_verify_token"
+  "webhook_verify_token",
+  "section_break_bcws",
+  "browser_calling_enabled",
+  "column_break_dnhx",
+  "application_id"
  ],
  "fields": [
   {
@@ -70,6 +74,32 @@
    "fieldtype": "Data",
    "label": "Webhook Verify Token",
    "mandatory_depends_on": "enabled"
+  },
+  {
+   "depends_on": "enabled",
+   "fieldname": "section_break_bcws",
+   "fieldtype": "Section Break",
+   "hide_border": 1,
+   "label": "Browser Calling"
+  },
+  {
+   "default": "0",
+   "depends_on": "enabled",
+   "description": "Requires a Plivo Application configured with this site's answer URL. Agents also need endpoint credentials set on their CRM Telephony Agent record.",
+   "fieldname": "browser_calling_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Browser Calling"
+  },
+  {
+   "fieldname": "column_break_dnhx",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.enabled && doc.browser_calling_enabled",
+   "fieldname": "application_id",
+   "fieldtype": "Data",
+   "label": "Application ID",
+   "mandatory_depends_on": "eval:doc.enabled && doc.browser_calling_enabled"
   }
  ],
  "index_web_pages_for_search": 1,

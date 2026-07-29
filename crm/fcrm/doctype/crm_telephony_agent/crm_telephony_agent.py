@@ -22,6 +22,8 @@ class CRMTelephonyAgent(Document):
 		exotel_number: DF.Data | None
 		mobile_no: DF.Data | None
 		phone_nos: DF.Table[CRMTelephonyPhone]
+		plivo_endpoint_password: DF.Password | None
+		plivo_endpoint_username: DF.Data | None
 		plivo_number: DF.Data | None
 		twilio_number: DF.Data | None
 		user: DF.Link

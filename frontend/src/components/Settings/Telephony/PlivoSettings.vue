@@ -77,6 +77,39 @@
               <Switch v-model="plivo.doc.record_call" size="sm" />
             </div>
           </div>
+          <div class="h-px border-t border-outline-elevation-2" />
+          <div class="flex items-center justify-between">
+            <div class="flex flex-col">
+              <div class="text-p-base-medium text-ink-gray-7 truncate">
+                {{ __('Browser Calling') }}
+              </div>
+              <div class="text-p-sm text-ink-gray-5 truncate">
+                {{
+                  __(
+                    'Let agents call from their headset in the browser tab, instead of ringing their real phone',
+                  )
+                }}
+              </div>
+            </div>
+            <div>
+              <Switch v-model="plivo.doc.browser_calling_enabled" size="sm" />
+            </div>
+          </div>
+          <div v-if="plivo.doc.browser_calling_enabled" class="space-y-4">
+            <FormControl
+              v-model="plivo.doc.application_id"
+              :label="__('Application ID')"
+              type="text"
+              placeholder="27579xxxxxxxxxxx"
+              required
+              autocomplete="off"
+              :description="
+                __(
+                  'A Plivo Application whose Answer URL and Hangup URL both point at this site (same webhook endpoints as above).',
+                )
+              "
+            />
+          </div>
         </div>
         <!--  Disabled state -->
         <div v-else class="relative flex h-full w-full justify-center">

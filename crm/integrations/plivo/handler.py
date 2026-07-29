@@ -23,12 +23,28 @@ from crm.integrations.api import get_contact_by_phone_number
 # https://www.plivo.com/docs/voice/xml/dial
 
 
-# Call answered — Plivo POSTs here once the outbound leg connects. We respond
-# with Dial XML that bridges the call to the agent's own phone (Exotel-style:
-# the agent's real mobile rings first, then gets bridged) and, if recording
-# is enabled, kick off Plivo's separate Record API (Plivo has no "Record: true"
-# flag on the initial Call/ request the way Exotel/Twilio do — recording is a
-# second call against Call/{call_uuid}/Record/ made once the call is live).
+# Call answered — Plivo invokes the Application's answer_url in TWO distinct
+# situations that both land here, and this callback has to tell them apart:
+#
+#  1. Server-initiated (make_a_call/Exotel-style): we already know the
+#     destination (the agent's own phone, passed through as `dial_to` on the
+#     answer_url we built) — bridge with <Dial><Number>{agent's phone}</Number>.
+#
+#  2. Browser-SDK-initiated (client.call(number) from PlivoCallUI's browser
+#     leg): the endpoint itself is the caller, so there's no `dial_to` query
+#     param — Plivo's own docs confirm the SDK's outbound flow still requires
+#     us to answer with <Dial><Number>{destination}</Number> (not automatic,
+#     see plivo.com/docs/voice/sdk/browser/overview), with `To` in the
+#     payload carrying the number the agent dialed. We recognize this case by
+#     checking whether `From` matches a known agent's plivo_endpoint_username
+#     (a value WE assigned when provisioning the endpoint — see
+#     get_browser_calling_credentials — so this disambiguation doesn't depend
+#     on guessing an undocumented Plivo-internal field).
+#
+# Recording (if enabled) is a separate Plivo API call kicked off here either
+# way — Plivo has no "Record: true" flag on the initial request the way
+# Exotel/Twilio do; recording only starts via a second POST against
+# Call/{call_uuid}/Record/ made once the call is confirmed live.
 @frappe.whitelist(allow_guest=True)
 def handle_answer(**kwargs):
 	validate_request()
@@ -49,11 +65,27 @@ def handle_answer(**kwargs):
 		frappe.publish_realtime("plivo_call", call_payload)
 
 		call_uuid = call_payload.get("CallUUID")
-		# The agent's own phone number to bridge into, passed through as a query
-		# param on the answer_url we built in make_a_call (Plivo echoes the query
-		# string through to this callback's form/query args, same trick used for
-		# `key`) — see get_callback_url/make_a_call.
-		agent_number = frappe.request.args.get("dial_to")
+		dial_target = frappe.request.args.get("dial_to")
+		is_browser_originated = False
+
+		if not dial_target:
+			caller = call_payload.get("From")
+			if caller and frappe.db.exists("CRM Telephony Agent", {"plivo_endpoint_username": caller}):
+				is_browser_originated = True
+				dial_target = call_payload.get("To")
+
+		# For browser-originated calls, `From` is the Plivo Endpoint username
+		# (e.g. "agent123456789012"), not a real phone number — using the
+		# agent's own Telephony Agent number there keeps the CRM Call Log's
+		# "From Number" column meaningful instead of showing an endpoint id.
+		log_from_number = call_payload.get("From")
+		if is_browser_originated:
+			log_from_number = (
+				frappe.db.get_value(
+					"CRM Telephony Agent", {"plivo_endpoint_username": log_from_number}, "plivo_number"
+				)
+				or log_from_number
+			)
 
 		existing_log = get_call_log(call_payload)
 		if existing_log:
@@ -61,7 +93,7 @@ def handle_answer(**kwargs):
 		else:
 			create_call_log(
 				call_id=call_uuid,
-				from_number=call_payload.get("From"),
+				from_number=log_from_number,
 				to_number=call_payload.get("To"),
 				medium=call_payload.get("To"),
 				status="In Progress",
@@ -72,7 +104,19 @@ def handle_answer(**kwargs):
 		if frappe.db.get_single_value("CRM Plivo Settings", "record_call"):
 			start_recording(call_uuid)
 
-		return _dial_response(agent_number) if agent_number else _empty_response()
+		if not dial_target:
+			# Neither a recognized server-initiated call (has dial_to) nor a
+			# recognized browser-originated one (From matches a provisioned
+			# endpoint username) — genuinely unexpected shape. Log it via the
+			# request_log above (already captures the full payload) rather than
+			# silently guessing at a destination.
+			frappe.log_error(
+				title="Plivo answer callback: could not resolve dial target",
+				message=frappe.as_json(call_payload),
+			)
+			return _empty_response()
+
+		return _dial_response(dial_target)
 	except Exception:
 		request_log.status = "Failed"
 		request_log.error = frappe.get_traceback()
@@ -146,6 +190,82 @@ def handle_recording(**kwargs):
 	except Exception:
 		frappe.log_error(title="Error while handling Plivo recording callback")
 		frappe.db.commit()
+
+
+# Browser (WebRTC) calling — auto-provisioning
+# Rather than asking every agent to create a Plivo Endpoint by hand in
+# Plivo's own console and paste the username/password back in (the manual
+# flow Plivo's docs describe), the CRM provisions one Endpoint per agent
+# server-side the first time they enable browser calling, the same
+# zero-manual-setup bar Twilio's generate_access_token already sets here.
+# Endpoint credentials, once created, are reused indefinitely — Plivo's
+# create-endpoint response never echoes the password back, so it has to be
+# generated here and persisted (encrypted, via the Password fieldtype) rather
+# than re-derived on every call.
+@frappe.whitelist()
+def get_browser_calling_credentials():
+	"""Returns {app_id, username, password} for the current user's Plivo
+	Endpoint, creating one (and linking it to the configured Application) on
+	first use. Frontend passes username/password straight to the Browser
+	SDK's Client.login()."""
+	settings = get_plivo_settings()
+	if not (settings.enabled and settings.browser_calling_enabled):
+		frappe.throw(_("Browser calling is not enabled"), title=_("Integration Not Enabled"))
+
+	if not settings.application_id:
+		frappe.throw(
+			_("Plivo Application ID is not configured"), title=_("Browser Calling Not Configured")
+		)
+
+	agent_name = frappe.db.exists("CRM Telephony Agent", {"user": frappe.session.user})
+	if not agent_name:
+		frappe.throw(
+			_("You do not have a Telephony Agent record set up"), title=_("Telephony Agent Missing")
+		)
+
+	agent = frappe.get_doc("CRM Telephony Agent", agent_name)
+
+	if not agent.plivo_endpoint_username:
+		_provision_endpoint(agent, settings)
+
+	return {
+		"app_id": settings.application_id,
+		"username": agent.plivo_endpoint_username,
+		"password": agent.get_password("plivo_endpoint_password"),
+	}
+
+
+def _provision_endpoint(agent, settings):
+	import secrets
+	import string
+
+	# Plivo appends its own 12-digit suffix to whatever username we submit, so
+	# a simple session.user-derived alias is enough — Plivo guarantees the
+	# final username is unique account-wide, not us.
+	base_username = "".join(ch for ch in agent.user.split("@")[0] if ch.isalnum())[:20] or "agent"
+	password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(20))
+
+	response = requests.post(
+		f"https://api.plivo.com/v1/Account/{settings.auth_id}/Endpoint/",
+		auth=(settings.auth_id, settings.get_password("auth_token")),
+		json={
+			"username": base_username,
+			"password": password,
+			"alias": agent.user_name or agent.user,
+			"app_id": settings.application_id,
+		},
+	)
+	try:
+		response.raise_for_status()
+	except requests.exceptions.HTTPError:
+		error = response.json().get("error") or response.text
+		frappe.throw(str(error), title=_("Failed to provision Plivo Endpoint"))
+
+	res = response.json()
+	agent.plivo_endpoint_username = res.get("username")
+	agent.plivo_endpoint_password = password
+	agent.save(ignore_permissions=True)
+	frappe.db.commit()
 
 
 # Outgoing Call

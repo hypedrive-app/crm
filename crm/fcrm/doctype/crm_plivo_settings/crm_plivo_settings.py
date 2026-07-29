@@ -16,8 +16,10 @@ class CRMPlivoSettings(Document):
 	if TYPE_CHECKING:
 		from frappe.types import DF
 
+		application_id: DF.Data | None
 		auth_id: DF.Data | None
 		auth_token: DF.Password | None
+		browser_calling_enabled: DF.Check
 		enabled: DF.Check
 		record_call: DF.Check
 		webhook_verify_token: DF.Data | None

@@ -17,6 +17,8 @@
   "column_break_aydj",
   "exotel_number",
   "plivo_number",
+  "plivo_endpoint_username",
+  "plivo_endpoint_password",
   "section_break_phlq",
   "phone_nos"
  ],
@@ -60,6 +62,19 @@
    "fieldname": "plivo_number",
    "fieldtype": "Data",
    "label": "Plivo Number"
+  },
+  {
+   "depends_on": "plivo_number",
+   "description": "SIP-style Endpoint credentials for browser-based (WebRTC) calling with Plivo. Leave blank to keep using server-side calling only.",
+   "fieldname": "plivo_endpoint_username",
+   "fieldtype": "Data",
+   "label": "Plivo Endpoint Username"
+  },
+  {
+   "depends_on": "plivo_number",
+   "fieldname": "plivo_endpoint_password",
+   "fieldtype": "Password",
+   "label": "Plivo Endpoint Password"
   },
   {
    "fieldname": "section_break_phlq",
