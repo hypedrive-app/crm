@@ -1,7 +1,7 @@
 <template>
   <ListView
     :class="$attrs.class"
-    :columns="columns"
+    :columns="visibleColumns"
     :rows="rows"
     :options="{
       getRowRoute: (row) => ({
@@ -21,7 +21,7 @@
       @columnWidthUpdated="emit('columnWidthUpdated')"
     >
       <ListHeaderItem
-        v-for="column in columns"
+        v-for="column in visibleColumns"
         :key="column.key"
         :item="column"
         @columnWidthUpdated="(e) => onColumnWidthUpdated(e, column)"
@@ -229,6 +229,7 @@ import MultipleAvatar from '@/components/MultipleAvatar.vue'
 import ListBulkActions from '@/components/ListBulkActions.vue'
 import ListRows from '@/components/ListViews/ListRows.vue'
 import { isTranslatable, formatDuration } from '@/utils'
+import { isMobileView } from '@/composables/settings'
 import {
   Avatar,
   ListView,
@@ -244,7 +245,7 @@ import { sessionStore } from '@/stores/session'
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
-defineProps({
+const props = defineProps({
   rows: { type: Array, required: true },
   columns: { type: Array, required: true },
   options: {
@@ -272,6 +273,18 @@ const route = useRoute()
 
 const pageLengthCount = defineModel({ type: Number })
 const list = defineModel('list', { type: Object })
+
+// The frappe-ui grid renders every column in one fixed-fr `grid-template-
+// columns` row and lets the whole thing overflow-x-scroll rather than wrap —
+// fine on desktop, but on a 375px phone it means only "Name" is visible and
+// every other field (status, owner, etc.) requires a sideways scroll to see.
+// Trimming to the title column + one supporting column keeps the row
+// readable without a horizontal-scrolling table. `columns[0]` (the full,
+// untrimmed array) is still used elsewhere for `firstColumn` in filter
+// events, so only the two render call-sites switch to this.
+const visibleColumns = computed(() =>
+  isMobileView.value ? props.columns.slice(0, 2) : props.columns,
+)
 
 function onColumnWidthUpdated({ width, save }, column) {
   column.width = width

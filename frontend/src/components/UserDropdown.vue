@@ -138,8 +138,11 @@ function getStandardItem(item) {
       return {
         icon: item.icon,
         label: __(item.label),
+        // Settings.vue's panel now stacks its nav responsively on narrow
+        // screens (see its dvh/md: layout), so it's reachable on mobile too —
+        // previously this was unconditionally hidden below the 768px
+        // breakpoint, leaving no way to open Settings on a phone at all.
         onClick: () => (showSettings.value = true),
-        condition: () => !isMobileView.value,
       }
     case 'login_to_fc':
       return {

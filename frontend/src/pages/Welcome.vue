@@ -1,11 +1,13 @@
 <template>
-  <div class="flex flex-col gap-5 justify-center items-center h-full">
+  <div class="flex flex-col gap-5 justify-center items-center h-full px-4 text-center">
     <div class="text-3xl-semibold text-ink-gray-8 mb-3">
       {{ __('Welcome {0}, lets add your first lead', [name]) }}
     </div>
-    <div class="flex gap-3">
+    <!-- Two fixed size-56 (224px) cards side by side need 464px+ of width,
+         which overflows any phone viewport — stack them below sm instead. -->
+    <div class="flex flex-col sm:flex-row gap-3">
       <div
-        class="flex flex-col px-6 pt-13 pb-7 justify-between bg-surface-gray-1 rounded-2xl items-center space-y-2 size-56"
+        class="flex flex-col px-6 pt-13 pb-7 justify-between bg-surface-gray-1 rounded-2xl items-center space-y-2 size-56 mx-auto"
       >
         <div class="flex flex-col items-center gap-2.5">
           <div class="flex -space-x-2">
@@ -24,7 +26,7 @@
         <Button variant="outline" :label="__('Add Sample Data')" />
       </div>
       <div
-        class="flex flex-col px-6 pt-13 pb-7 justify-between bg-surface-gray-1 rounded-2xl items-center space-y-2 size-56"
+        class="flex flex-col px-6 pt-13 pb-7 justify-between bg-surface-gray-1 rounded-2xl items-center space-y-2 size-56 mx-auto"
       >
         <div class="flex flex-col items-center gap-2.5">
           <GoogleIcon class="" />

@@ -38,11 +38,11 @@
     </template>
     <template #default>
       <div class="flex flex-col gap-4">
-        <div class="flex items-center">
-          <div class="text-base text-ink-gray-7 w-3/12">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
+          <div class="text-base text-ink-gray-7 sm:w-3/12">
             {{ __('Title') }}
           </div>
-          <div class="flex gap-1 w-9/12">
+          <div class="flex gap-1 sm:w-9/12">
             <Dropdown class="" :options="colors">
               <div
                 class="flex items-center justify-center size-7 shrink-0 border border-outline-gray-2 bg-surface-base hover:border-outline-gray-3 hover:shadow-sm rounded cursor-pointer"
@@ -73,11 +73,14 @@
           <Switch v-model="_event.isFullDay" />
         </div>
         <div class="border-t border-outline-gray-1" />
-        <div class="flex items-center">
-          <div class="text-base text-ink-gray-7 w-3/12">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-0">
+          <div class="text-base text-ink-gray-7 sm:w-3/12">
             {{ __('Date & Time') }}
           </div>
-          <div class="flex gap-2 w-9/12">
+          <!-- Stack the date + start/end time pickers on mobile — at their fixed
+               widths (158px + 112px + 112px + gaps) they don't fit a 375px
+               viewport alongside the label column. -->
+          <div class="flex flex-wrap gap-2 sm:w-9/12">
             <DatePicker
               :class="[_event.isFullDay ? 'w-full' : 'w-[158px]']"
               variant="outline"
@@ -115,11 +118,11 @@
             />
           </div>
         </div>
-        <div class="flex items-start">
-          <div class="text-base text-ink-gray-7 mt-1.5 w-3/12">
+        <div class="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-0">
+          <div class="text-base text-ink-gray-7 sm:mt-1.5 sm:w-3/12">
             {{ __('Attendees') }}
           </div>
-          <div class="w-9/12">
+          <div class="sm:w-9/12">
             <Attendee
               v-model="peoples"
               :validate="validateEmail"
@@ -129,11 +132,11 @@
             />
           </div>
         </div>
-        <div class="flex items-start">
-          <div class="text-base text-ink-gray-7 mt-1.5 w-3/12">
+        <div class="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-0">
+          <div class="text-base text-ink-gray-7 sm:mt-1.5 sm:w-3/12">
             {{ __('Visibility') }}
           </div>
-          <div class="w-9/12">
+          <div class="sm:w-9/12">
             <FormControl
               v-model="_event.eventType"
               class="w-full"
@@ -153,11 +156,11 @@
             />
           </div>
         </div>
-        <div class="flex items-start">
-          <div class="text-base text-ink-gray-7 mt-1.5 w-3/12">
+        <div class="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-0">
+          <div class="text-base text-ink-gray-7 sm:mt-1.5 sm:w-3/12">
             {{ __('Location') }}
           </div>
-          <div class="w-9/12">
+          <div class="sm:w-9/12">
             <TextInput
               v-model="_event.location"
               class="w-full"
@@ -167,11 +170,11 @@
             />
           </div>
         </div>
-        <div class="flex">
-          <div class="mt-2 text-base text-ink-gray-7 w-3/12">
+        <div class="flex flex-col sm:flex-row gap-1 sm:gap-0">
+          <div class="mt-2 text-base text-ink-gray-7 sm:w-3/12">
             {{ __('Description') }}
           </div>
-          <div class="w-9/12">
+          <div class="sm:w-9/12">
             <TextEditor
               editor-class="!prose-sm overflow-auto min-h-[80px] max-h-80 py-1.5 px-2 rounded border border-outline-gray-2 placeholder-ink-gray-4 hover:border-outline-gray-3 hover:border-outline-elevation-2 hover:shadow-sm focus:bg-surface-base focus:border-outline-gray-4 focus:ring-0 focus-visible:ring-2 focus-visible:ring-outline-gray-3 text-ink-gray-8 transition-colors"
               :bubbleMenu="true"
@@ -182,11 +185,11 @@
           </div>
         </div>
         <div class="border-t border-outline-gray-1" />
-        <div class="flex">
-          <div class="mt-1.5 text-base text-ink-gray-7 w-3/12">
+        <div class="flex flex-col sm:flex-row gap-1 sm:gap-0">
+          <div class="mt-1.5 text-base text-ink-gray-7 sm:w-3/12">
             {{ __('Notifications') }}
           </div>
-          <div class="w-9/12">
+          <div class="sm:w-9/12">
             <EventNotifications
               v-model="_event.notifications"
               :isAllDay="_event.isFullDay"

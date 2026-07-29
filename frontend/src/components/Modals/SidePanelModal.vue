@@ -30,13 +30,21 @@
             <Button :label="__('Reset')" @click="reload" />
           </div>
         </div>
-        <div v-if="tabs.data?.[0]?.sections" class="flex gap-4">
+        <!-- Editor + preview are side-by-side on desktop; at 3 flex-1 columns
+             this doesn't fit a mobile viewport, so stack them below sm. -->
+        <div
+          v-if="tabs.data?.[0]?.sections"
+          class="flex flex-col sm:flex-row gap-4"
+        >
           <SidePanelLayoutEditor
             v-model="tabs.data[0].sections"
-            class="flex flex-1 flex-col pr-2"
+            class="flex flex-1 flex-col sm:pr-2"
             :doctype="_doctype"
           />
-          <div v-if="preview" class="flex flex-1 flex-col border rounded">
+          <div
+            v-if="preview"
+            class="flex flex-1 flex-col border rounded min-h-40"
+          >
             <SidePanelLayout
               v-slot="{ section }"
               :sections="tabs.data[0].sections"
@@ -54,7 +62,7 @@
           </div>
           <div
             v-else
-            class="flex flex-1 justify-center items-center text-ink-gray-5 bg-surface-gray-2 rounded"
+            class="flex flex-1 min-h-24 justify-center items-center text-ink-gray-5 bg-surface-gray-2 rounded"
           >
             {{ __('Toggle on for Preview') }}
           </div>

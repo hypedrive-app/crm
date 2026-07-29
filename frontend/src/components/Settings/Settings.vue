@@ -6,25 +6,38 @@
     @close="activeSettingsPage = ''"
   >
     <template #body>
-      <div class="flex h-[calc(100vh_-_8rem)] bg-surface-gray-1">
+      <!-- calc(100vh_-_8rem) doesn't account for the mobile browser chrome
+           (address bar) resizing the viewport, and on a narrow screen there's
+           no room to spare for that slack anyway — dvh + flex-col here mirror
+           the app shell's own dvh fix so the dialog always fits the real
+           visible viewport instead of being cut off/scrolled under the
+           address bar. Below md, the side nav becomes a horizontally
+           scrollable tab strip stacked above the content instead of a fixed
+           w-56 rail, since there isn't width to spare for both side by side. -->
+      <div
+        class="flex flex-col h-[100dvh] max-h-[calc(100dvh_-_2rem)] md:h-[calc(100vh_-_8rem)] md:max-h-none md:flex-row bg-surface-gray-1"
+      >
         <div
-          class="flex flex-col m-1 rounded-l-lg w-56 shrink-0 bg-surface-gray-1 overflow-y-auto"
+          class="flex flex-col shrink-0 m-1 rounded-l-lg bg-surface-gray-1 overflow-y-auto md:w-56 max-md:flex-row max-md:overflow-x-auto max-md:overflow-y-hidden max-md:rounded-lg max-md:gap-1"
         >
           <template v-for="(tab, i) in tabs" :key="tab.label">
-            <div v-if="!tab.hideLabel && i != 0" class="mx-1 mb-0.5 mt-[5px]" />
+            <div
+              v-if="!tab.hideLabel && i != 0"
+              class="mx-1 mb-0.5 mt-[5px] max-md:hidden"
+            />
             <div
               v-if="!tab.hideLabel"
-              class="h-7.5 px-2 py-[7px] my-[3px] flex cursor-pointer gap-1.5 text-xs-medium text-ink-gray-5 transition-all duration-300 ease-in-out sticky top-0 z-10 bg-surface-gray-1"
+              class="h-7.5 px-2 py-[7px] my-[3px] flex cursor-pointer gap-1.5 text-xs-medium text-ink-gray-5 transition-all duration-300 ease-in-out sticky top-0 z-10 bg-surface-gray-1 max-md:hidden"
             >
               <span>{{ __(tab.label) }}</span>
             </div>
-            <nav class="space-y-[3px] px-1">
+            <nav class="space-y-[3px] px-1 max-md:flex max-md:shrink-0 max-md:gap-1 max-md:space-y-0 max-md:px-0">
               <SidebarItem
                 v-for="item in tab.items"
                 :key="item.label"
                 :label="__(item.label)"
                 :active="activeTab?.label == item.label"
-                class="w-full"
+                class="w-full max-md:w-auto max-md:whitespace-nowrap"
                 :class="
                   activeTab?.label != item.label && 'hover:!bg-surface-gray-3'
                 "
@@ -38,7 +51,7 @@
           </template>
         </div>
         <div
-          class="flex flex-col flex-1 overflow-y-auto bg-surface-elevation-2"
+          class="flex flex-col flex-1 min-h-0 overflow-y-auto bg-surface-elevation-2"
         >
           <component :is="activeTab.component" v-if="activeTab" />
         </div>

@@ -18,7 +18,12 @@
       </ShortcutTooltip>
     </template>
   </LayoutHeader>
-  <div class="flex h-screen overflow-hidden">
+  <!-- h-screen (100vh) ignored the LayoutHeader above it and the parent
+       shell's actual dvh-based available height (see DesktopLayout/
+       MobileLayout), so the calendar body ran taller than the visible
+       viewport — worst on mobile Safari where the address bar eats into
+       100vh. h-full matches how every sibling page fills its flex parent. -->
+  <div class="flex h-full overflow-hidden">
     <Calendar
       ref="calendar"
       class="flex-1 overflow-hidden"

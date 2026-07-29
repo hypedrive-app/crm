@@ -1,7 +1,7 @@
 <template>
   <ListView
     :class="$attrs.class"
-    :columns="columns"
+    :columns="visibleColumns"
     :rows="rows"
     :options="{
       selectable: options.selectable,
@@ -16,7 +16,7 @@
       @columnWidthUpdated="emit('columnWidthUpdated')"
     >
       <ListHeaderItem
-        v-for="column in columns"
+        v-for="column in visibleColumns"
         :key="column.key"
         :item="column"
         @columnWidthUpdated="(e) => onColumnWidthUpdated(e, column)"
@@ -145,6 +145,7 @@
 import ListBulkActions from '@/components/ListBulkActions.vue'
 import ListRows from '@/components/ListViews/ListRows.vue'
 import { isTranslatable, formatDuration, openWebsite } from '@/utils'
+import { isMobileView } from '@/composables/settings'
 import { getPlatformLogoUrl } from '@/utils/platformLogo'
 import {
   Avatar,
@@ -159,9 +160,9 @@ import {
   Tooltip,
   Dropdown,
 } from 'frappe-ui'
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 
-defineProps({
+const props = defineProps({
   rows: { type: Array, required: true },
   columns: { type: Array, required: true },
   options: {
@@ -186,6 +187,12 @@ const emit = defineEmits([
 
 const pageLengthCount = defineModel({ type: Number })
 const list = defineModel('list', { type: Object })
+
+// See LeadsListView.vue: trims the fixed-grid columns to title + one field
+// on mobile so the row doesn't require horizontal scrolling to read.
+const visibleColumns = computed(() =>
+  isMobileView.value ? props.columns.slice(0, 2) : props.columns,
+)
 
 function onColumnWidthUpdated({ width, save }, column) {
   column.width = width

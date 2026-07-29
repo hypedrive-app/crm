@@ -1,7 +1,7 @@
 <template>
   <ListView
     :class="$attrs.class"
-    :columns="columns"
+    :columns="visibleColumns"
     :rows="rows"
     :options="{
       getRowRoute: (row) => ({
@@ -21,7 +21,7 @@
       @columnWidthUpdated="emit('columnWidthUpdated')"
     >
       <ListHeaderItem
-        v-for="column in columns"
+        v-for="column in visibleColumns"
         :key="column.key"
         :item="column"
         @columnWidthUpdated="(e) => onColumnWidthUpdated(e, column)"
@@ -225,6 +225,7 @@ import RatingInput from '@/components/Controls/RatingInput.vue'
 import ListBulkActions from '@/components/ListBulkActions.vue'
 import ListRows from '@/components/ListViews/ListRows.vue'
 import { isTranslatable, formatDuration } from '@/utils'
+import { isMobileView } from '@/composables/settings'
 import {
   Avatar,
   ListView,
@@ -240,7 +241,7 @@ import { sessionStore } from '@/stores/session'
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
-defineProps({
+const props = defineProps({
   rows: { type: Array, required: true },
   columns: { type: Array, required: true },
   options: {
@@ -269,6 +270,13 @@ const route = useRoute()
 
 const pageLengthCount = defineModel({ type: Number })
 const list = defineModel('list', { type: Object })
+
+// See LeadsListView.vue: frappe-ui's grid renders all columns in one fixed
+// grid-template-columns row with horizontal overflow, which on a phone
+// leaves only "Name" visible. Trim to title + one field on mobile.
+const visibleColumns = computed(() =>
+  isMobileView.value ? props.columns.slice(0, 2) : props.columns,
+)
 
 function onColumnWidthUpdated({ width, save }, column) {
   column.width = width

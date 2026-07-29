@@ -2,7 +2,7 @@
   <Teleport to="body">
     <div
       v-if="visibleAlerts.length > 0"
-      class="fixed bottom-4 right-4 z-50 w-96"
+      class="fixed bottom-4 right-4 left-4 z-50 w-auto max-w-96 sm:left-auto"
     >
       <TransitionGroup name="popup" tag="div" class="space-y-2">
         <div
@@ -36,7 +36,7 @@
             />
           </div>
           <Button
-            class="absolute -top-2 -left-2 shadow ring-inset !bg-surface-elevation-1 hover:!bg-surface-gray-1 text-ink-gray-3 !p-0 !size-5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+            class="absolute -top-2 -left-2 shadow ring-inset !bg-surface-elevation-1 hover:!bg-surface-gray-1 text-ink-gray-3 !p-0 !size-5 rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
             @click="completeAlert(alert.id)"
           >
             <span

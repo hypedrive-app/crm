@@ -1,5 +1,7 @@
 <template>
-  <div class="flex overflow-x-auto h-full">
+  <div
+    class="flex overflow-x-auto h-full snap-x snap-mandatory sm:snap-none"
+  >
     <Draggable
       v-if="columns"
       :list="columns"
@@ -11,7 +13,7 @@
       <template #item="{ element: column }">
         <div
           v-if="!column.column.delete"
-          class="flex flex-col gap-2.5 min-w-72 w-72 hover:bg-surface-gray-2 rounded-lg p-2.5"
+          class="flex flex-col gap-2.5 min-w-[85vw] w-[85vw] snap-center sm:min-w-72 sm:w-72 sm:snap-align-none hover:bg-surface-gray-2 rounded-lg p-2.5"
         >
           <div class="flex gap-2 items-center group justify-between">
             <div class="flex items-center text-base">
@@ -55,8 +57,12 @@
             <div class="flex">
               <Dropdown :options="actions(column)">
                 <template #default>
+                  <!-- opacity/pointer-events are hover-gated for desktop declutter, but
+                       touch devices have no hover state — that made this button
+                       permanently invisible and unclickable on mobile, with no way to
+                       reach column actions (e.g. delete). Always show it below sm. -->
                   <Button
-                    class="opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity"
+                    class="opacity-100 pointer-events-auto sm:opacity-0 sm:group-hover:opacity-100 sm:pointer-events-none sm:group-hover:pointer-events-auto transition-opacity"
                     icon="lucide-more-horizontal"
                     variant="ghost"
                   />

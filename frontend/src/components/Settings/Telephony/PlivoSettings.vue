@@ -39,7 +39,7 @@
     <template #content>
       <div v-if="plivo.doc" class="h-full">
         <div v-if="plivo.doc.enabled" class="space-y-4">
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormControl
               v-model="plivo.doc.auth_id"
               :label="__('Auth ID')"
