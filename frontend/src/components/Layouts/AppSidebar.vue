@@ -2,7 +2,7 @@
   <!-- The notifications panel is absolutely positioned at `left: 100%`, so it
        needs a positioning context that is not the Sidebar itself (Sidebar sets
        overflow-x-hidden, which would clip the panel away). -->
-  <div class="relative flex h-full">
+  <div class="relative flex h-full" :data-mobile="mobile || undefined">
     <Sidebar
       v-model:collapsed="isSidebarCollapsed"
       :disable-collapse="mobile"
@@ -736,3 +736,16 @@ const articles = ref([
   },
 ])
 </script>
+
+<style scoped>
+/* frappe-ui's SidebarItem hardcodes h-7 (28px), sized for a mouse-driven
+   desktop rail. In the mobile drawer this is the primary nav with no
+   pointer-precision fallback, so 28px rows fall well under the ~44px
+   minimum touch target. Scoping the bump to [data-mobile] (set only by
+   AppSidebar's `mobile` prop) keeps desktop density untouched and avoids
+   patching the shared frappe-ui primitive directly. */
+[data-mobile] :deep([data-slot='sidebar-item']),
+[data-mobile] :deep([data-slot='sidebar-label']) {
+  height: 2.75rem;
+}
+</style>
