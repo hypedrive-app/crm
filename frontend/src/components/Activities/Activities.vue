@@ -24,7 +24,8 @@
     <div
       v-else-if="
         activities?.length ||
-        (whatsappMessages.data?.length && title == 'WhatsApp')
+        (whatsappMessages.data?.length && title == 'WhatsApp') ||
+        (title == 'Chatwoot' && (chatwootConversations.data?.length || chatwootMessages.data?.messages?.length))
       "
       class="activities"
     >
@@ -34,6 +35,15 @@
           v-model:reply="replyMessage"
           class="px-3 sm:px-10"
           :messages="whatsappMessages.data"
+        />
+      </div>
+      <div v-else-if="title == 'Chatwoot'">
+        <ChatwootArea
+          class="px-3 sm:px-10"
+          :messages="chatwootMessages.data?.messages || []"
+          :conversations="chatwootConversations.data || []"
+          :active-conversation-id="activeChatwootConversationId"
+          @select-conversation="selectChatwootConversation"
         />
       </div>
       <div
@@ -412,6 +422,13 @@
       :doctype="doctype"
       @scroll="scroll"
     />
+    <ChatwootBox
+      v-if="title == 'Chatwoot'"
+      ref="chatwootBox"
+      v-model:chatwoot="chatwootMessages"
+      :conversation-id="activeChatwootConversationId"
+      @scroll="scroll"
+    />
   </div>
   <WhatsappTemplateSelectorModal
     v-if="whatsappEnabled"
@@ -459,6 +476,8 @@ import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import EventArea from '@/components/Activities/EventArea.vue'
 import WhatsAppArea from '@/components/Activities/WhatsAppArea.vue'
 import WhatsAppBox from '@/components/Activities/WhatsAppBox.vue'
+import ChatwootArea from '@/components/Activities/ChatwootArea.vue'
+import ChatwootBox from '@/components/Activities/ChatwootBox.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import EmptyState from '@/components/ListViews/EmptyState.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
@@ -481,6 +500,7 @@ import { globalStore } from '@/stores/global'
 import { usersStore } from '@/stores/users'
 import { useTimelinePreferences } from '@/composables/useTimelinePreferences'
 import { whatsappEnabled } from '@/composables/whatsapp'
+import { chatwootEnabled } from '@/composables/chatwoot'
 import { useDocument } from '@/data/document'
 import { useTelemetry } from 'frappe-ui/frappe'
 import { Button, createResource, toast } from 'frappe-ui'
@@ -565,8 +585,48 @@ watch(
   { immediate: true },
 )
 
+const activeChatwootConversationId = ref(null)
+
+const chatwootConversations = createResource({
+  url: 'crm.api.chatwoot.get_chatwoot_conversations',
+  cache: ['chatwoot_conversations', props.docname],
+  params: {
+    reference_doctype: props.doctype,
+    reference_name: props.docname,
+  },
+  auto: false,
+  onSuccess: (data) => {
+    if (data?.length && !activeChatwootConversationId.value) {
+      activeChatwootConversationId.value = data[0].id
+      chatwootMessages.fetch()
+    }
+  },
+})
+
+const chatwootMessages = createResource({
+  url: 'crm.api.chatwoot.get_chatwoot_messages',
+  cache: ['chatwoot_messages', props.docname],
+  makeParams: () => ({ conversation_id: activeChatwootConversationId.value }),
+  auto: false,
+  onSuccess: () => nextTick(() => scroll()),
+})
+
+function selectChatwootConversation(conversationId) {
+  activeChatwootConversationId.value = conversationId
+  chatwootMessages.fetch()
+}
+
+watch(
+  chatwootEnabled,
+  (enabled) => {
+    if (enabled) chatwootConversations.fetch()
+  },
+  { immediate: true },
+)
+
 onBeforeUnmount(() => {
   $socket.off('whatsapp_message')
+  $socket.off('chatwoot_message')
   $socket.off('docinfo_update', handleDocinfoUpdate)
   $socket.emit('doc_unsubscribe', props.doctype, props.docname)
 })
@@ -580,6 +640,17 @@ onMounted(() => {
       data.reference_name === props.docname
     ) {
       whatsappMessages.reload()
+    }
+  })
+  $socket.on('chatwoot_message', (data) => {
+    // Minimal signal payload (conversation_id/inbox_id/updated_at only, no
+    // message body — see frappe_chatwoot's realtime_bridge.py docstring).
+    // We don't know which conversation belongs to THIS record client-side
+    // without re-querying, so refetch the conversation list; if the active
+    // conversation matches, also refetch its messages.
+    chatwootConversations.reload()
+    if (data.conversation_id === activeChatwootConversationId.value) {
+      chatwootMessages.reload()
     }
   })
 
@@ -824,6 +895,7 @@ function timelineIcon(activity_type, is_lead) {
 
 const emailBox = ref(null)
 const whatsappBox = ref(null)
+const chatwootBox = ref(null)
 
 watch([reload, reload_email], ([reload_value, reload_email_value]) => {
   if (reload_value || reload_email_value) {
