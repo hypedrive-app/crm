@@ -57,6 +57,19 @@ from crm.integrations.api import get_contact_by_phone_number
 # way — Plivo has no "Record: true" flag on the initial request the way
 # Exotel/Twilio do; recording only starts via a second POST against
 # Call/{call_uuid}/Record/ made once the call is confirmed live.
+#
+# Resolving the real agent: this webhook always hits as Guest (Plivo's
+# callbacks are unauthenticated — see validate_request), so
+# frappe.session.user is never the initiating agent and can't be used for
+# CRM Call Log's caller field. Both cases above already have the real
+# answer independent of session:
+#  - server-initiated: the agent who called make_a_call is threaded through
+#    explicitly via an `agent` query param on the answer_url (alongside the
+#    existing `dial_to`), so it's just read back here.
+#  - browser-originated: the endpoint username already resolved above (to
+#    find agent_plivo_number) belongs to exactly one CRM Telephony Agent,
+#    whose `user` field IS the initiating agent — reused from the same
+#    lookup rather than re-queried.
 @frappe.whitelist(allow_guest=True)
 def handle_answer(**kwargs):
 	validate_request()
@@ -78,6 +91,14 @@ def handle_answer(**kwargs):
 
 		call_uuid = call_payload.get("CallUUID")
 		dial_target = frappe.request.args.get("dial_to")
+		# The user who initiated the call — for server-initiated calls this is
+		# threaded through the answer_url query string at creation time (see
+		# make_a_call, which appends `&agent=` alongside the existing `&dial_to=`),
+		# since this webhook itself always hits as Guest (Plivo's callbacks
+		# aren't authenticated) and frappe.session.user is therefore never the
+		# real agent. For browser-originated calls this gets overwritten below
+		# once the endpoint username resolves to a CRM Telephony Agent.
+		agent_user = frappe.request.args.get("agent")
 		is_browser_originated = False
 		agent_plivo_number = None
 
@@ -89,9 +110,9 @@ def handle_answer(**kwargs):
 			# to the "unrecognized" branch below) until this was extracted.
 			caller = extract_endpoint_username(call_payload.get("From"))
 			if caller:
-				agent_plivo_number = frappe.db.get_value(
-					"CRM Telephony Agent", {"plivo_endpoint_username": caller}, "plivo_number"
-				)
+				agent_plivo_number, agent_user = frappe.db.get_value(
+					"CRM Telephony Agent", {"plivo_endpoint_username": caller}, ["plivo_number", "user"]
+				) or (None, None)
 			if agent_plivo_number:
 				is_browser_originated = True
 				dial_target = call_payload.get("To")
@@ -112,7 +133,7 @@ def handle_answer(**kwargs):
 				medium=call_payload.get("To"),
 				status="In Progress",
 				call_type="Outgoing",
-				agent=frappe.session.user if frappe.session.user != "Guest" else None,
+				agent=agent_user,
 			)
 
 		if frappe.db.get_single_value("CRM Plivo Settings", "record_call"):
@@ -395,7 +416,7 @@ def make_a_call(to_number: str, from_number: str | None = None, caller_id: str |
 				"from": caller_id,
 				"to": to_number,
 				"answer_url": get_callback_url("handle_answer")
-				+ f"&dial_to={quote(from_number)}",
+				+ f"&dial_to={quote(from_number)}&agent={quote(frappe.session.user)}",
 				"answer_method": "POST",
 				"hangup_url": get_callback_url("handle_hangup"),
 				"hangup_method": "POST",

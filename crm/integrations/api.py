@@ -65,6 +65,21 @@ def get_user_default_calling_medium():
 	if not default_medium:
 		return None
 
+	# Pre-existing agents may still have the bare "Plivo" stored from before
+	# calling split into two explicit modes (browser vs phone). That string no
+	# longer matches any option the frontend's calling-medium dispatcher
+	# recognizes, which made "Make a Call" silently do nothing for anyone who
+	# had set Plivo as their default before this change. Normalize it to
+	# whichever mode is actually available, rather than leaving it dangling.
+	if default_medium == "Plivo":
+		plivo_settings = frappe.db.get_values(
+			"CRM Plivo Settings", "CRM Plivo Settings", ["enabled", "browser_calling_enabled"], as_dict=True
+		)
+		plivo_settings = plivo_settings[0] if plivo_settings else {}
+		if plivo_settings.get("enabled") and plivo_settings.get("browser_calling_enabled"):
+			return "Plivo (Browser)"
+		return "Plivo (Phone)"
+
 	return default_medium
 
 

@@ -106,14 +106,23 @@ const enabledIntegrations = computed(() => {
 const mediumOptions = computed(() => enabledIntegrations.value.map((o) => o.label))
 
 function makeCall(number) {
-  if (enabledIntegrations.value.length > 1 && !defaultCallingMedium.value) {
+  // A stored default medium that no longer matches any currently enabled
+  // option (e.g. a stale value from before a provider added/renamed its
+  // modes) must fall through to the picker rather than silently no-op in
+  // makeCallUsing() below — that's exactly what happened with a bare
+  // "Plivo" default surviving the split into "Plivo (Browser)"/"Plivo (Phone)".
+  const hasValidDefault =
+    defaultCallingMedium.value &&
+    mediumOptions.value.includes(defaultCallingMedium.value)
+
+  if (enabledIntegrations.value.length > 1 && !hasValidDefault) {
     mobileNumber.value = number
     show.value = true
     return
   }
 
   callMedium.value = enabledIntegrations.value[0]?.label ?? 'Twilio'
-  if (defaultCallingMedium.value) {
+  if (hasValidDefault) {
     callMedium.value = defaultCallingMedium.value
   }
 
@@ -159,12 +168,15 @@ watch(
   isAnyEnabled,
   () =>
     nextTick(() => {
-      for (const {
-        key,
-        label,
-        ref: integrationRef,
-      } of enabledIntegrations.value) {
-        integrationRef.value.setup()
+      // Plivo's browser and phone modes share one component ref, so calling
+      // .setup() once per enabledIntegrations entry would log the same
+      // WebRTC client in twice — dedupe by ref instead.
+      const setupRefs = new Set()
+      for (const { label, ref: integrationRef } of enabledIntegrations.value) {
+        if (!setupRefs.has(integrationRef)) {
+          setupRefs.add(integrationRef)
+          integrationRef.value.setup()
+        }
         callMedium.value = label
       }
 
