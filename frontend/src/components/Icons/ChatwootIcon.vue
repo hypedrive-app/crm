@@ -2,19 +2,20 @@
   <svg
     width="16"
     height="16"
-    viewBox="0 0 16 16"
+    viewBox="0 0 24 24"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
   >
     <path
-      d="M8 1C4.13 1 1 3.83 1 7.3c0 1.86.9 3.53 2.33 4.68L2.5 15l3.2-1.35c.73.2 1.5.3 2.3.3 3.87 0 7-2.83 7-6.3S11.87 1 8 1Z"
+      d="M12 2.5C6.753 2.5 2.5 6.147 2.5 10.769c0 2.43 1.183 4.62 3.084 6.163a.5.5 0 0 1 .174.46c-.147 1.14-.482 2.55-1.256 3.727a.4.4 0 0 0 .421.612c1.79-.42 3.44-1.194 4.65-1.867a.5.5 0 0 1 .372-.05c.66.176 1.352.286 2.055.318a.5.5 0 0 1 .05 0c.313.014.629.019.95.006C18.166 19.907 22.5 15.877 22.5 10.769 22.5 6.147 17.247 2.5 12 2.5Z"
       stroke="currentColor"
-      stroke-width="1"
-      stroke-linecap="round"
+      stroke-width="1.3"
       stroke-linejoin="round"
     />
-    <circle cx="5.3" cy="7.3" r="0.9" fill="currentColor" />
-    <circle cx="8" cy="7.3" r="0.9" fill="currentColor" />
-    <circle cx="10.7" cy="7.3" r="0.9" fill="currentColor" />
+    <path
+      d="M9.9 11.5V9.9a2.1 2.1 0 1 1 4.2 0v1.6a2.1 2.1 0 1 1-4.2 0Z"
+      stroke="currentColor"
+      stroke-width="1.2"
+    />
   </svg>
 </template>
