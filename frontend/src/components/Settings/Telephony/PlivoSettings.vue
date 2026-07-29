@@ -96,6 +96,13 @@
             </div>
           </div>
           <div v-if="plivo.doc.browser_calling_enabled" class="space-y-4">
+            <div class="rounded-lg bg-surface-amber-1 border border-outline-amber-2 p-3 text-p-sm text-ink-gray-7">
+              {{
+                __(
+                  "Browser calling needs a stable outbound connection: agents on a restrictive office/corporate firewall may need UDP traffic to Plivo's SIP signalling and media servers explicitly allowed, or calls may fail to connect even though login succeeds.",
+                )
+              }}
+            </div>
             <FormControl
               v-model="plivo.doc.application_id"
               :label="__('Application ID')"

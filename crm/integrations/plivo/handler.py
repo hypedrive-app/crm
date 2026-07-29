@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 import frappe
 import requests
 from frappe import _
@@ -40,6 +42,14 @@ from crm.integrations.api import get_contact_by_phone_number
 #     (a value WE assigned when provisioning the endpoint — see
 #     get_browser_calling_credentials — so this disambiguation doesn't depend
 #     on guessing an undocumented Plivo-internal field).
+#
+#     IMPORTANT — do NOT use `Direction`/`CallDirection` to distinguish these
+#     two cases: a Plivo engineer confirmed (github.com/plivo/
+#     plivo-browser-sdk2-examples/issues/3) that for an Endpoint-originated
+#     call, the leg hitting answer_url is the endpoint->Plivo leg, which
+#     Plivo itself reports as Direction="inbound" — the OPPOSITE of the
+#     intuitive guess. A Direction=="outbound" check here would silently
+#     misclassify every real browser call as server-initiated.
 #
 # Recording (if enabled) is a separate Plivo API call kicked off here either
 # way — Plivo has no "Record: true" flag on the initial request the way
@@ -241,8 +251,14 @@ def _provision_endpoint(agent, settings):
 
 	# Plivo appends its own 12-digit suffix to whatever username we submit, so
 	# a simple session.user-derived alias is enough — Plivo guarantees the
-	# final username is unique account-wide, not us.
-	base_username = "".join(ch for ch in agent.user.split("@")[0] if ch.isalnum())[:20] or "agent"
+	# final username is unique account-wide, not us. Plivo also requires the
+	# username to start with a letter, so a leading digit (possible if
+	# agent.user starts with one, e.g. "2fa-backup@...") gets a prefix rather
+	# than being submitted as-is and rejected.
+	base_username = "".join(ch for ch in agent.user.split("@")[0] if ch.isalnum()) or "agent"
+	if base_username[0].isdigit():
+		base_username = "agent" + base_username
+	base_username = base_username[:20]
 	password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(20))
 
 	response = requests.post(
@@ -300,7 +316,8 @@ def make_a_call(to_number: str, from_number: str | None = None, caller_id: str |
 			json={
 				"from": caller_id,
 				"to": to_number,
-				"answer_url": get_callback_url("handle_answer") + f"&dial_to={from_number}",
+				"answer_url": get_callback_url("handle_answer")
+				+ f"&dial_to={quote(from_number)}",
 				"answer_method": "POST",
 				"hangup_url": get_callback_url("handle_hangup"),
 				"hangup_method": "POST",
