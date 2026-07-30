@@ -447,6 +447,27 @@ def make_a_call(to_number: str, from_number: str | None = None, caller_id: str |
 			_("You do not have mobile number set in your Telephony Agent"), title=_("Mobile Number Missing")
 		)
 
+	# Plivo requires E.164 — a bare national number silently fails the dial leg
+	# (Duration 1, "End Of XML Instructions"). Normalize everything before it
+	# leaves for Plivo.
+	to_number = normalize_number(to_number)
+	from_number = normalize_number(from_number)
+	caller_id = normalize_number(caller_id)
+
+	if not to_number or len(to_number) < 10:
+		frappe.throw(
+			_("The number to call ({0}) is not a valid phone number.").format(to_number),
+			title=_("Invalid Number"),
+		)
+	if len(from_number) < 10:
+		frappe.throw(
+			_(
+				"Your Telephony Agent mobile number ({0}) is not a valid phone number — "
+				"it needs a country code (e.g. 91 for India)."
+			).format(from_number),
+			title=_("Invalid Agent Number"),
+		)
+
 	settings = get_plivo_settings()
 	endpoint = f"https://api.plivo.com/v1/Account/{settings.auth_id}/Call/"
 
@@ -496,6 +517,12 @@ def make_a_call(to_number: str, from_number: str | None = None, caller_id: str |
 
 
 def _dial_response(number: str, caller_id: str | None = None) -> Response:
+	# Both the dialed number and the callerId must be E.164 for Plivo's <Dial>.
+	# The dialed number is the leg that actually rings — a national-format
+	# number here is exactly what produced the 1-second "End Of XML Instructions"
+	# hangups.
+	number = normalize_number(number)
+	caller_id = normalize_number(caller_id)
 	dial_attrs = f' callerId="{frappe.utils.escape_html(caller_id)}"' if caller_id else ""
 	xml = (
 		f"<Response><Dial{dial_attrs}>"
@@ -547,6 +574,57 @@ def get_callback_url(method: str) -> str:
 
 def get_plivo_settings():
 	return frappe.get_single("CRM Plivo Settings")
+
+
+# Default country calling code used to complete a bare national number into
+# E.164. India (91) matches this deployment; exposed as a Plivo Settings field
+# so other regions can override it without a code change.
+DEFAULT_COUNTRY_CODE = "91"
+
+
+def normalize_number(number: str | None) -> str | None:
+	"""Return `number` in E.164-ish form (digits only, with country code, no '+').
+
+	Plivo REQUIRES E.164 for both the outbound `to` and the <Dial><Number>
+	destination — a bare national number like "9315501702" is rejected and the
+	dial leg dies instantly with HangupCause NORMAL_CLEARING / "End Of XML
+	Instructions" and Duration 1 (confirmed live from the hangup webhook
+	payloads). This was the root cause of every "call connects then drops after
+	1 second": the agent's stored mobile_no had no country code.
+
+	Rules (conservative — only touches clearly-national numbers, never mangles
+	an already-qualified one):
+	  - strip spaces, dashes, parens, and a leading '+'
+	  - if it already starts with the default country code and is long enough,
+	    leave it (e.g. 918035396691)
+	  - a 10-digit national number gets the default country code prefixed
+	  - anything already >10 digits is assumed to carry its own country code
+	"""
+	if not number:
+		return number
+
+	digits = "".join(ch for ch in str(number) if ch.isdigit())
+	if not digits:
+		return number
+
+	cc = (
+		frappe.db.get_single_value("CRM Plivo Settings", "default_country_code")
+		or DEFAULT_COUNTRY_CODE
+	)
+	cc = "".join(ch for ch in str(cc) if ch.isdigit()) or DEFAULT_COUNTRY_CODE
+
+	# Already carries this country code (e.g. 91XXXXXXXXXX).
+	if digits.startswith(cc) and len(digits) > 10:
+		return digits
+
+	# Bare national number (India: 10 digits) → prefix the country code.
+	if len(digits) == 10:
+		return cc + digits
+
+	# Longer than a national number and not our CC → assume it already has its
+	# own country code; leave it. Shorter than 10 is malformed — return as-is so
+	# the caller's validation surfaces it rather than us silently "fixing" it.
+	return digits
 
 
 def validate_request():

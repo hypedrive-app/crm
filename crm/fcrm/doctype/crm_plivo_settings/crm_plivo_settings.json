@@ -8,6 +8,7 @@
   "enabled",
   "column_break_uxtz",
   "record_call",
+  "default_country_code",
   "section_break_kfez",
   "auth_id",
   "column_break_qwfn",
@@ -100,6 +101,13 @@
    "fieldtype": "Data",
    "label": "Application ID",
    "mandatory_depends_on": "eval:doc.enabled && doc.browser_calling_enabled"
+  },
+  {
+   "default": "91",
+   "description": "Country calling code (without +) prefixed to bare national numbers before dialing. Plivo requires E.164 — a number without a country code fails the call. Default 91 (India).",
+   "fieldname": "default_country_code",
+   "fieldtype": "Data",
+   "label": "Default Country Code"
   }
  ],
  "index_web_pages_for_search": 1,
