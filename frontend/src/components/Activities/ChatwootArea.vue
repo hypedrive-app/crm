@@ -39,7 +39,13 @@
           >
             {{ message.sender.name }}
           </div>
-          <div v-html="formatChatwootMessage(message.content || '')" />
+          <div
+            v-if="message.content"
+            v-html="formatChatwootMessage(message.content)"
+          />
+          <div v-else class="italic text-ink-gray-5">
+            {{ __('Template message') }}
+          </div>
           <div
             v-if="message.attachments?.length"
             class="mt-1.5 flex flex-col gap-1.5"
