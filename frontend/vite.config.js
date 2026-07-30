@@ -16,6 +16,17 @@ export default defineConfig(async ({ mode }) => {
         devOptions: {
           enabled: true,
         },
+        workbox: {
+          // Default cap is 2 MiB. The app has grown several large chunks
+          // (WhatsApp interactive/flows/bulk-campaign features, the shared
+          // useActiveTabManager chunk that Rollup bundles most pages'
+          // dependency graph into, leaflet, the rich-text editor) that now
+          // exceed that — vite-plugin-pwa treats an over-limit asset as a
+          // hard build error, not a warning, so the production build fails
+          // outright without this. Raised to comfortably cover the current
+          // largest chunk (~6.3 MB) with headroom for growth.
+          maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
+        },
         manifest: {
           display: 'standalone',
           name: 'Frappe CRM',
