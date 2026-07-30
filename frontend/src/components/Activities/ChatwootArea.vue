@@ -7,7 +7,7 @@
          `activeConversationId`, so without this the tab rendered completely
          blank with no explanation of why. -->
     <div
-      v-if="!activeConversationId"
+      v-if="!hasThread"
       class="flex flex-col items-center gap-1 px-3 py-10 text-center sm:px-10"
     >
       <span
@@ -120,7 +120,7 @@
       @escape="onSearchEscape"
     />
     <div
-      v-for="group in visibleGroups"
+      v-for="group in hasThread ? visibleGroups : []"
       :key="group.key"
       class="group flex gap-2 mb-3"
       :class="[group.direction == 'outgoing' ? 'justify-end' : '']"
@@ -309,6 +309,16 @@ const props = defineProps({
 defineEmits(['selectConversation', 'toggleStatus'])
 
 const isResolved = computed(() => props.status === 'resolved')
+
+// A thread exists once there's an active conversation OR any messages have
+// loaded. The empty-state and the thread key off this SAME flag so they are
+// strictly mutually exclusive — previously the empty-state gated on
+// `!activeConversationId` while the message list had no gate at all, so during
+// the window where messages had loaded but the active id wasn't set yet, the
+// "no conversation" placeholder rendered ON TOP of a populated thread.
+const hasThread = computed(
+  () => Boolean(props.activeConversationId) || props.messages.length > 0,
+)
 
 // Grouping and search both come from the shared chat primitives so this
 // thread and the WhatsApp thread behave identically. Chatwoot's messages

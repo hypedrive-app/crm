@@ -777,6 +777,20 @@ function toggleChatwootStatus(nextStatus) {
   })
 }
 
+// Selects the first conversation as active once the list loads. Uses onData
+// (NOT onSuccess): onSuccess does not fire on a frappe-ui cache hit, so on a
+// warm reload the active id stayed null while the messages resource served
+// cached data — which rendered the chat thread AND the "no conversation"
+// empty-state at the same time (the empty-state keyed off the null active id).
+// onData fires on both fresh fetch and cache hit, so the active id is always set
+// whenever conversations exist.
+function selectFirstChatwootConversation(data) {
+  if (data?.length && !activeChatwootConversationId.value) {
+    activeChatwootConversationId.value = data[0].id
+    chatwootMessages.fetch()
+  }
+}
+
 const chatwootConversations = createResource({
   url: 'crm.api.chatwoot.get_chatwoot_conversations',
   cache: ['chatwoot_conversations', props.docname],
@@ -785,12 +799,8 @@ const chatwootConversations = createResource({
     reference_name: props.docname,
   },
   auto: false,
-  onSuccess: (data) => {
-    if (data?.length && !activeChatwootConversationId.value) {
-      activeChatwootConversationId.value = data[0].id
-      chatwootMessages.fetch()
-    }
-  },
+  onData: selectFirstChatwootConversation,
+  onSuccess: selectFirstChatwootConversation,
 })
 
 const chatwootMessages = createResource({
