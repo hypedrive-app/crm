@@ -9,7 +9,7 @@
       {
         label: __('Call using {0}', [callMedium]),
         variant: 'solid',
-        onClick: makeCallUsing,
+        onClick: confirmCall,
       },
     ]"
   >
@@ -72,12 +72,21 @@ const mobileNumber = ref('')
 // medium list below only offers "Plivo (Browser)" when this is genuinely on,
 // so agents are never shown a choice that would fail immediately.
 const plivoBrowserCallingEnabled = ref(false)
+// Guards the race that sent browser calls down the SERVER path: this flag
+// starts false and only flips true once the resource resolves. If a call is
+// placed before then, `enabledIntegrations` omits "Plivo (Browser)" entirely,
+// so the stored "Plivo (Browser)" default no longer matches any option and the
+// routing falls through to enabledIntegrations[0] === "Plivo (Phone)" — i.e. a
+// server call the agent never asked for. `mediumConfigLoaded` lets makeCall
+// wait for the real config instead of routing on the default-false placeholder.
+const mediumConfigLoaded = ref(false)
 createResource({
   url: 'crm.integrations.api.is_call_integration_enabled',
   cache: 'Is Call Integration Enabled',
   auto: true,
   onSuccess: (data) => {
     plivoBrowserCallingEnabled.value = Boolean(data.plivo_browser_calling_enabled)
+    mediumConfigLoaded.value = true
   },
 })
 
@@ -105,51 +114,95 @@ const enabledIntegrations = computed(() => {
 
 const mediumOptions = computed(() => enabledIntegrations.value.map((o) => o.label))
 
-function makeCall(number) {
-  // A stored default medium that no longer matches any currently enabled
-  // option (e.g. a stale value from before a provider added/renamed its
-  // modes) must fall through to the picker rather than silently no-op in
-  // makeCallUsing() below — that's exactly what happened with a bare
-  // "Plivo" default surviving the split into "Plivo (Browser)"/"Plivo (Phone)".
-  const hasValidDefault =
-    defaultCallingMedium.value &&
-    mediumOptions.value.includes(defaultCallingMedium.value)
+// Resolves once the calling config has loaded. Routing depends on
+// `plivoBrowserCallingEnabled`, which is `false` until its resource resolves,
+// so any call placed during that window must wait — otherwise the medium list
+// is computed off the placeholder and routes wrong (see mediumConfigLoaded).
+function waitForMediumConfig() {
+  if (mediumConfigLoaded.value) return Promise.resolve()
+  return new Promise((resolve) => {
+    const stop = watch(mediumConfigLoaded, (loaded) => {
+      if (loaded) {
+        stop()
+        resolve()
+      }
+    })
+  })
+}
 
-  if (enabledIntegrations.value.length > 1 && !hasValidDefault) {
-    mobileNumber.value = number
-    show.value = true
+async function makeCall(number) {
+  if (!number) {
+    toast.error(__('Please set a mobile number to make calls'))
     return
   }
 
-  callMedium.value = enabledIntegrations.value[0]?.label ?? 'Twilio'
-  if (hasValidDefault) {
-    callMedium.value = defaultCallingMedium.value
+  await waitForMediumConfig()
+
+  const options = enabledIntegrations.value
+  if (!options.length) {
+    toast.error(__('No calling integration is enabled.'))
+    return
   }
 
+  // The agent chooses HOW to call. When more than one mechanism is available
+  // (e.g. Plivo Browser vs Plivo Phone) always open the picker so a headset
+  // call is never silently placed as a phone call, or vice versa. A stored
+  // default only pre-selects the dropdown; it does not skip the choice.
+  // A single option needs no picker — there is nothing to choose.
   mobileNumber.value = number
-  makeCallUsing()
+
+  if (options.length === 1) {
+    callMedium.value = options[0].label
+    dispatchCall(options[0])
+    return
+  }
+
+  const storedDefault = options.find((o) => o.label === defaultCallingMedium.value)
+  callMedium.value = (storedDefault ?? options[0]).label
+  show.value = true
 }
 
-function makeCallUsing() {
+// Invoked by the picker's "Call using X" button. Maps the currently selected
+// label back to its medium object and dispatches — the selection is the
+// agent's explicit choice.
+function confirmCall() {
+  const medium = enabledIntegrations.value.find((o) => o.label === callMedium.value)
+  if (!medium) {
+    toast.error(__('Please choose a calling medium.'))
+    return
+  }
+  dispatchCall(medium)
+}
+
+// Dispatches to the chosen provider. Takes the resolved medium object so the
+// label→mechanism mapping lives in one place (enabledIntegrations) instead of
+// being re-derived from a string here. Guards against a provider component ref
+// that has not mounted yet rather than throwing on `.value.method`.
+function dispatchCall(medium) {
   if (isDefaultMedium.value && callMedium.value) {
     setDefaultCallingMedium()
   }
 
-  if (callMedium.value === 'Twilio') {
-    twilio.value.makeOutgoingCall(mobileNumber.value)
+  const providerRef = medium.ref?.value
+  if (!providerRef) {
+    toast.error(__('Calling is still starting up — try again in a moment.'))
+    return
   }
 
-  if (callMedium.value === 'Exotel') {
-    exotel.value.makeOutgoingCall(mobileNumber.value)
+  if (medium.key === 'plivo') {
+    // The two Plivo modes are genuinely different mechanisms behind one
+    // provider: `browser` places a WebRTC call from this tab (headset),
+    // `server` rings the agent's own phone first and bridges.
+    if (medium.mode === 'server') {
+      providerRef.makeServerCall(mobileNumber.value)
+    } else {
+      providerRef.makeOutgoingCall(mobileNumber.value)
+    }
+  } else {
+    // Twilio / Exotel expose a single outgoing-call method.
+    providerRef.makeOutgoingCall(mobileNumber.value)
   }
 
-  if (callMedium.value === 'Plivo (Browser)') {
-    plivo.value.makeOutgoingCall(mobileNumber.value)
-  }
-
-  if (callMedium.value === 'Plivo (Phone)') {
-    plivo.value.makeServerCall(mobileNumber.value)
-  }
   show.value = false
 }
 
