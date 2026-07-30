@@ -80,15 +80,27 @@ const plivoBrowserCallingEnabled = ref(false)
 // server call the agent never asked for. `mediumConfigLoaded` lets makeCall
 // wait for the real config instead of routing on the default-false placeholder.
 const mediumConfigLoaded = ref(false)
-createResource({
+const applyMediumConfig = (data) => {
+  if (!data) return
+  plivoBrowserCallingEnabled.value = Boolean(data.plivo_browser_calling_enabled)
+  mediumConfigLoaded.value = true
+}
+const callConfigResource = createResource({
   url: 'crm.integrations.api.is_call_integration_enabled',
-  cache: 'Is Call Integration Enabled',
+  // NOTE: deliberately NOT sharing telephony.js's 'Is Call Integration Enabled'
+  // cache key. When both resources share it, this one gets served from cache
+  // and its onSuccess never fires — so mediumConfigLoaded stayed false forever,
+  // waitForMediumConfig() below awaited a promise that never resolved, and the
+  // call button silently did nothing. onData fires on cache hits too; the
+  // separate key + reading .data (below) are belt-and-braces.
+  cache: 'Call Medium Config',
   auto: true,
-  onSuccess: (data) => {
-    plivoBrowserCallingEnabled.value = Boolean(data.plivo_browser_calling_enabled)
-    mediumConfigLoaded.value = true
-  },
+  onData: applyMediumConfig,
+  onSuccess: applyMediumConfig,
 })
+// If the resource already has data synchronously (cache warm from a prior
+// mount), apply it now so the very first click isn't gated on a callback.
+if (callConfigResource.data) applyMediumConfig(callConfigResource.data)
 
 // Plivo genuinely offers TWO distinct calling mechanisms behind one
 // "provider enabled" flag — a headset/browser call (PlivoCallUI's WebRTC
@@ -120,13 +132,24 @@ const mediumOptions = computed(() => enabledIntegrations.value.map((o) => o.labe
 // is computed off the placeholder and routes wrong (see mediumConfigLoaded).
 function waitForMediumConfig() {
   if (mediumConfigLoaded.value) return Promise.resolve()
+  // Kick a fetch in case the resource never auto-loaded, and never wait
+  // forever: a 4s cap means a click can't be silently swallowed even if the
+  // config request hangs — it falls through to routing on whatever is known,
+  // which is strictly better than a dead button.
+  callConfigResource.fetch?.()
   return new Promise((resolve) => {
+    let settled = false
+    const done = () => {
+      if (settled) return
+      settled = true
+      stop()
+      clearTimeout(timer)
+      resolve()
+    }
     const stop = watch(mediumConfigLoaded, (loaded) => {
-      if (loaded) {
-        stop()
-        resolve()
-      }
+      if (loaded) done()
     })
+    const timer = setTimeout(done, 4000)
   })
 }
 
