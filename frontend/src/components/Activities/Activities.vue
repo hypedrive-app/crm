@@ -763,7 +763,6 @@ function handleDocinfoUpdate({ doc, key }) {
 }
 
 function sendTemplate({ template, bodyParameters, headerParameters }) {
-  showWhatsappTemplates.value = false
   capture('send_whatsapp_template', { doctype: props.doctype })
   createResource({
     url: 'crm.api.whatsapp.send_whatsapp_template',
@@ -779,7 +778,14 @@ function sendTemplate({ template, bodyParameters, headerParameters }) {
     onError: (error) => {
       toast.error(error.messages?.[0] || __('Failed to send WhatsApp template'))
     },
-    onSuccess: () => whatsappMessages.reload(),
+    // Only dismiss the dialog once the send is confirmed to have gone
+    // through — closing unconditionally (as before) hid genuine failures
+    // (e.g. Meta rejecting an AUTHENTICATION-category template) behind a
+    // dialog that appeared to close as if the send had succeeded.
+    onSuccess: () => {
+      showWhatsappTemplates.value = false
+      whatsappMessages.reload()
+    },
   })
 }
 

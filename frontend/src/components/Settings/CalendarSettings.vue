@@ -259,7 +259,7 @@
 import { getSettings } from '@/stores/settings'
 import { showSettings } from '@/composables/settings'
 import { min, max, handleIntervalChange } from '@/components/Calendar/utils'
-import { FormControl, TimePicker } from 'frappe-ui'
+import { FormControl, TimePicker, toast } from 'frappe-ui'
 import { computed } from 'vue'
 
 const { _settings: settings } = getSettings()
@@ -278,6 +278,9 @@ function updateSettings() {
   settings.save.submit(null, {
     onSuccess: () => {
       showSettings.value = false
+    },
+    onError: (err) => {
+      toast.error(err?.messages?.[0] || __('Failed to update settings'))
     },
   })
 }

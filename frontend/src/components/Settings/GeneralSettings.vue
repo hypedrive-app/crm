@@ -153,12 +153,22 @@ function toggle(settingKey) {
           : __('Setting disabled successfully'),
       )
     },
+    onError: (err) => {
+      // The Switch is v-model bound (optimistic), so revert it on failure —
+      // otherwise the toggle stays visually flipped even though the save
+      // never went through, and no toast means the user has no idea.
+      settings.doc[settingKey] = !settings.doc[settingKey]
+      toast.error(err?.messages?.[0] || __('Failed to update setting'))
+    },
   })
 }
 
 function save() {
   settings.save.submit(null, {
     onSuccess: () => toast.success(__('Setting updated successfully')),
+    onError: (err) => {
+      toast.error(err?.messages?.[0] || __('Failed to update setting'))
+    },
   })
 }
 </script>

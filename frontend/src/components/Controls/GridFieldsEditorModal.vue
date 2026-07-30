@@ -100,7 +100,7 @@ import DragVerticalIcon from '@/components/Icons/DragVerticalIcon.vue'
 import { getMeta } from '@/stores/meta'
 import Draggable from 'vuedraggable'
 import { Combobox, Dialog, ErrorMessage } from 'frappe-ui'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const props = defineProps({
   doctype: { type: String, default: '' },
@@ -186,14 +186,41 @@ function update() {
   })
 
   if (updateFields.length === 0) {
+    // Was returning here without resetting `loading` back to false (set
+    // true a few lines up), leaving the Save button spinning forever if the
+    // user removed every field and clicked Save.
+    loading.value = false
     error.value = __('At least one field is required')
     return
   }
 
-  saveUserSettings(props.parentDoctype, 'GridView', updateFields, () => {
-    loading.value = false
-    show.value = false
-  })
+  error.value = null
+  const resource = saveUserSettings(
+    props.parentDoctype,
+    'GridView',
+    updateFields,
+    () => {
+      loading.value = false
+      show.value = false
+    },
+  )
+  // saveUserSettings's underlying createResource has `auto: true` and no
+  // onError of its own, and doesn't return a promise we can await — without
+  // this watch, a failed save (e.g. permission error) left the dialog open
+  // with a stuck spinner and no feedback. Watch the resource's own reactive
+  // `error` instead of trying to attach a handler after the fetch already
+  // started.
+  if (resource && typeof resource === 'object' && 'error' in resource) {
+    const stop = watch(
+      () => resource.error,
+      (err) => {
+        if (!err) return
+        loading.value = false
+        error.value = err.messages?.[0] || __('Failed to save fields layout')
+        stop()
+      },
+    )
+  }
 }
 
 function fieldObj(field) {

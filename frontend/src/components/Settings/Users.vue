@@ -259,7 +259,11 @@ function getDropdownOptions(user) {
     },
   ]
 
-  return options.filter((option) => option.condition?.() || true)
+  // `option.condition?.() || true` always evaluated to true (false || true
+  // === true), so the isAdmin() gate on the Admin/Manager role options never
+  // actually hid them from non-admin managers. Keep an option when it has no
+  // condition, or when its condition passes.
+  return options.filter((option) => !option.condition || option.condition())
 }
 
 function updateRole(user, newRole) {

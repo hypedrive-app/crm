@@ -95,7 +95,7 @@ import UserAvatar from '@/components/UserAvatar.vue'
 import Link from '@/components/Controls/Link.vue'
 import { usersStore } from '@/stores/users'
 import { useTelemetry } from 'frappe-ui/frappe'
-import { Tooltip, call } from 'frappe-ui'
+import { Tooltip, call, toast } from 'frappe-ui'
 import { ref, onMounted } from 'vue'
 
 const props = defineProps({
@@ -146,36 +146,44 @@ async function updateAssignees() {
     )
     .map((assignee) => assignee.name)
 
-  if (removedAssignees.length) {
-    await call('crm.api.doc.remove_assignments', {
-      doctype: props.doctype,
-      name: props.doc.name,
-      assignees: JSON.stringify(removedAssignees),
-    })
-  }
-
-  if (addedAssignees.length) {
-    if (props.docs.size) {
-      capture('bulk_assign_to', { doctype: props.doctype })
-      call('frappe.desk.form.assign_to.add_multiple', {
-        doctype: props.doctype,
-        name: JSON.stringify(Array.from(props.docs)),
-        assign_to: addedAssignees,
-        bulk_assign: true,
-        re_assign: true,
-      }).then(() => {
-        emit('reload')
-      })
-    } else {
-      capture('assign_to', { doctype: props.doctype })
-      call('frappe.desk.form.assign_to.add', {
+  // None of these calls were error-handled and the dialog closed
+  // unconditionally right after — a failed remove/add (permission error,
+  // etc.) silently reverted nothing in the UI, giving false confidence the
+  // assignment change had gone through.
+  try {
+    if (removedAssignees.length) {
+      await call('crm.api.doc.remove_assignments', {
         doctype: props.doctype,
         name: props.doc.name,
-        assign_to: addedAssignees,
+        assignees: JSON.stringify(removedAssignees),
       })
     }
+
+    if (addedAssignees.length) {
+      if (props.docs.size) {
+        capture('bulk_assign_to', { doctype: props.doctype })
+        await call('frappe.desk.form.assign_to.add_multiple', {
+          doctype: props.doctype,
+          name: JSON.stringify(Array.from(props.docs)),
+          assign_to: addedAssignees,
+          bulk_assign: true,
+          re_assign: true,
+        })
+        emit('reload')
+      } else {
+        capture('assign_to', { doctype: props.doctype })
+        await call('frappe.desk.form.assign_to.add', {
+          doctype: props.doctype,
+          name: props.doc.name,
+          assign_to: addedAssignees,
+        })
+      }
+    }
+    show.value = false
+  } catch (err) {
+    error.value = err.messages?.[0] || __('Failed to update assignees')
+    toast.error(error.value)
   }
-  show.value = false
 }
 
 onMounted(() => {

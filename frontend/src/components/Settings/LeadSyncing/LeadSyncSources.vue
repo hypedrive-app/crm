@@ -140,8 +140,8 @@ const sourcesList = computed(() => {
   if (search.value) {
     list = list.filter(
       (source) =>
-        source.name.toLowerCase().includes(search.value.toLowerCase()) ||
-        source.subject.toLowerCase().includes(search.value.toLowerCase()),
+        source.name?.toLowerCase().includes(search.value.toLowerCase()) ||
+        source.type?.toLowerCase().includes(search.value.toLowerCase()),
     )
   }
   return list

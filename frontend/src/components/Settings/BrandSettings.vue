@@ -119,7 +119,7 @@
 <script setup>
 import ImageIcon from '~icons/lucide/image'
 import ImageUploader from '@/components/Controls/ImageUploader.vue'
-import { FormControl } from 'frappe-ui'
+import { FormControl, toast } from 'frappe-ui'
 import { getSettings } from '@/stores/settings'
 import { showSettings } from '@/composables/settings'
 
@@ -130,6 +130,9 @@ function updateSettings() {
     onSuccess: () => {
       showSettings.value = false
       setupBrand()
+    },
+    onError: (err) => {
+      toast.error(err?.messages?.[0] || __('Failed to update brand settings'))
     },
   })
 }

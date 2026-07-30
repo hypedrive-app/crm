@@ -44,6 +44,7 @@ import {
   createResource,
   TextEditor,
   DatePicker,
+  toast,
 } from 'frappe-ui'
 import { ref, computed, onMounted, h } from 'vue'
 
@@ -111,19 +112,27 @@ function updateValues() {
         [field.value.fieldname]: fieldVal || null,
       },
     },
-  ).then(() => {
-    field.value = {
-      label: '',
-      fieldtype: '',
-      fieldname: '',
-      options: '',
-    }
-    newValue.value = ''
-    loading.value = false
-    show.value = false
-    capture('bulk_update', { doctype: props.doctype })
-    emit('reload')
-  })
+  )
+    .then(() => {
+      field.value = {
+        label: '',
+        fieldtype: '',
+        fieldname: '',
+        options: '',
+      }
+      newValue.value = ''
+      loading.value = false
+      show.value = false
+      capture('bulk_update', { doctype: props.doctype })
+      emit('reload')
+    })
+    .catch((error) => {
+      // No .catch previously — a failed bulk update (permission error,
+      // mandatory field violation, etc.) left the dialog open with a
+      // stuck loading spinner and no feedback at all.
+      loading.value = false
+      toast.error(error.messages?.[0] || __('Failed to update records'))
+    })
 }
 
 function changeField(f) {

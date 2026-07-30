@@ -72,7 +72,7 @@
 <script setup>
 import { IconPicker } from 'frappe-ui/icons'
 import { isEmoji } from '@/utils'
-import { call } from 'frappe-ui'
+import { call, toast } from 'frappe-ui'
 import { ref, computed, watch, nextTick } from 'vue'
 
 const props = defineProps({
@@ -117,21 +117,31 @@ const _view = ref({
 
 async function create() {
   view.value.doctype = props.doctype
-  let v = await call(
-    'crm.fcrm.doctype.crm_view_settings.crm_view_settings.create',
-    { view: view.value },
-  )
-  show.value = false
-  props.options.afterCreate?.(v)
+  try {
+    let v = await call(
+      'crm.fcrm.doctype.crm_view_settings.crm_view_settings.create',
+      { view: view.value },
+    )
+    show.value = false
+    props.options.afterCreate?.(v)
+  } catch (error) {
+    // Previously uncaught — a failed create (e.g. duplicate view name) left
+    // the dialog open with no feedback and no way to tell the save failed.
+    toast.error(error.messages?.[0] || __('Failed to create view'))
+  }
 }
 
 async function update() {
   view.value.doctype = props.doctype
-  await call('crm.fcrm.doctype.crm_view_settings.crm_view_settings.update', {
-    view: view.value,
-  })
-  show.value = false
-  props.options.afterUpdate?.(view.value)
+  try {
+    await call('crm.fcrm.doctype.crm_view_settings.crm_view_settings.update', {
+      view: view.value,
+    })
+    show.value = false
+    props.options.afterUpdate?.(view.value)
+  } catch (error) {
+    toast.error(error.messages?.[0] || __('Failed to update view'))
+  }
 }
 
 watch(show, (value) => {

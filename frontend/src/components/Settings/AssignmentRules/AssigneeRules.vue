@@ -48,7 +48,7 @@
           </template>
           <template #body="{ togglePopover }">
             <div
-              class="p-1 text-ink-gray-7 mt-1 w-48 bg-white shadow-xl rounded"
+              class="p-1 text-ink-gray-7 mt-1 w-48 bg-surface-white shadow-xl rounded"
             >
               <div
                 v-for="option in documentRoutingOptions"

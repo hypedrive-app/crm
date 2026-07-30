@@ -271,7 +271,12 @@ function updateSource(data) {
           docResource.value.document.reload()
         }
 
-        mappingFormDocResource.value.document.save.submit()
+        // Only present when a Facebook lead form (with a question mapping
+        // grid) has been selected — absent otherwise, so guard before use
+        // or every plain "Update" (no lead form chosen yet) throws.
+        if (mappingFormDocResource.value) {
+          mappingFormDocResource.value.document.save.submit()
+        }
       },
       onError(e) {
         toast.error(e.messages[0] || __('Error updating Lead Sync Source'))
@@ -387,9 +392,7 @@ function getSourceDocResource(name) {
           toast.success(__('Syncing started in background'))
         },
         onError(e) {
-          toast.error(
-            (e.messages ?? e.messages[0]) || __('Error syncing leads'),
-          )
+          toast.error(e.messages?.[0] || __('Error syncing leads'))
         },
       },
     },

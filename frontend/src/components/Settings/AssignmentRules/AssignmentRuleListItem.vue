@@ -125,6 +125,10 @@ const deleteAssignmentRule = () => {
       isConfirmingDelete.value = false
       toast.success(__('Assignment Rule Deleted'))
     },
+    onError: (error) => {
+      isConfirmingDelete.value = false
+      toast.error(error?.messages?.[0] || __('Failed to delete Assignment Rule'))
+    },
     auto: true,
   })
 }
@@ -160,6 +164,11 @@ const duplicate = () => {
       duplicateDialog.value.name = ''
       updateStep('view', data)
     },
+    onError: (error) => {
+      toast.error(
+        error?.messages?.[0] || __('Failed to duplicate Assignment Rule'),
+      )
+    },
     auto: true,
   })
 }
@@ -189,6 +198,15 @@ const setAssignmentRuleValue = (key, value, fieldName = undefined) => {
     onSuccess: () => {
       assignmentRulesList.reload()
       toast.success(__('Assignment Rule {0} Updated', [fieldName || key]))
+    },
+    onError: (error) => {
+      // Revert the optimistic local UI state (switch/priority select) since
+      // the write failed and assignmentRulesList was never reloaded.
+      Object.assign(localData, props.data)
+      toast.error(
+        error?.messages?.[0] ||
+          __('Failed to update Assignment Rule {0}', [fieldName || key]),
+      )
     },
     auto: true,
   })

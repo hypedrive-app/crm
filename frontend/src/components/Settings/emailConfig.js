@@ -200,7 +200,7 @@ export function validateInputs(state, isCustom) {
       return __('API key is required')
     }
     if (!state.api_secret) {
-      return
+      return __('API Secret is required')
     }
   }
   return ''

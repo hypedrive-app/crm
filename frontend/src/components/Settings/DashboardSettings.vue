@@ -227,6 +227,9 @@ function updateSettings() {
         send('reload-deal-sections')
       }
     },
+    onError: (err) => {
+      toast.error(err?.messages?.[0] || __('Failed to update settings'))
+    },
   })
 }
 

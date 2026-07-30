@@ -128,7 +128,7 @@
                   </template>
                   <template #body-main>
                     <div
-                      class="text-sm text-ink-gray-6 p-2 bg-white rounded-md max-w-96 text-wrap whitespace-pre-wrap leading-5"
+                      class="text-sm text-ink-gray-6 p-2 bg-surface-white rounded-md max-w-96 text-wrap whitespace-pre-wrap leading-5"
                     >
                       <code>{{ slaData.condition }}</code>
                     </div>
@@ -480,13 +480,20 @@ const updateSla = async () => {
   )
 
   if (slaData.value.name !== slaData.value.sla_name) {
+    // Track whether the rename actually succeeded so we don't fall through to
+    // fetching the doc under a name that was never created, and don't show a
+    // misleading "Updated" success toast right after the rename error toast.
+    let renameSucceeded = true
     await renameSlaResource.submit().catch(async (er) => {
+      renameSucceeded = false
       const error =
         er?.messages?.[0] || __('Some error occurred while renaming SLA policy')
       toast.error(error)
       // Reset assignment rule to previous state
       await getSlaResource.reload()
     })
+
+    if (!renameSucceeded) return
 
     getSlaResource.submit({
       doctype: 'CRM Service Level Agreement',

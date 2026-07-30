@@ -230,6 +230,22 @@ async function createDeal() {
     deal.doc['email'] = null
     deal.doc['mobile_no'] = null
   } else deal.doc['contact'] = null
+  if (chooseExistingOrganization.value) {
+    // Bug fix: backend create_deal() calls deal.update(doc) with the raw doc,
+    // which writes organization_name/website/industry/annual_revenue/
+    // no_of_employees straight onto the Deal even when an existing
+    // organization is linked (organization link only gates whether a NEW
+    // CRM Organization gets created, not whether these inline fields persist
+    // on the Deal). Left unset, stale values (e.g. the 'no_of_employees:
+    // 1-10' onMounted default, or text typed before toggling the switch)
+    // would show as the Deal's org details, mismatching the linked org.
+    // Mirrors the existing contact-field nulling above for the same reason.
+    deal.doc['organization_name'] = null
+    deal.doc['website'] = null
+    deal.doc['industry'] = null
+    deal.doc['annual_revenue'] = null
+    deal.doc['no_of_employees'] = null
+  } else deal.doc['organization'] = null
 
   await triggerOnBeforeCreate?.()
 

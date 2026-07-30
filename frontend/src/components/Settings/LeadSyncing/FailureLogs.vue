@@ -134,7 +134,7 @@ watch(selectedLog, () => {
         onError(e) {
           toast.error(
             e.message ||
-              (e.messages ?? e.messages[0]) ||
+              e.messages?.[0] ||
               e.exc_type ||
               __('Error Syncing Lead'),
           )

@@ -91,7 +91,7 @@
             variant="solid"
             icon-left="lucide-trash-2"
             :label="__('Delete')"
-            :loading="isDealCreating"
+            :loading="isDeleting"
             theme="red"
             @click="deleteDoc()"
           />
@@ -131,7 +131,7 @@
 </template>
 
 <script setup>
-import { createResource, call } from 'frappe-ui'
+import { createResource, call, toast } from 'frappe-ui'
 import { useRouter } from 'vue-router'
 import { computed, ref } from 'vue'
 
@@ -248,12 +248,26 @@ const removeDocLinks = () => {
   viewControls.value.updateSelections([])
 }
 
+// `isDealCreating` (undefined in this file) used to be bound to the Delete
+// button's :loading — since Vue silently resolves unknown template refs to
+// falsy, the spinner never showed and a failed delete gave the user no
+// feedback at all. Track a real ref and surface errors via toast.
+const isDeleting = ref(false)
+
 const deleteDoc = async () => {
-  await call('frappe.client.delete', {
-    doctype: props.doctype,
-    name: props.docname,
-  })
-  router.push({ name: props.name })
-  props?.reload?.()
+  isDeleting.value = true
+  try {
+    await call('frappe.client.delete', {
+      doctype: props.doctype,
+      name: props.docname,
+    })
+    show.value = false
+    router.push({ name: props.name })
+    props?.reload?.()
+  } catch (error) {
+    toast.error(error.messages?.join('\n') || __('Could not delete the document.'))
+  } finally {
+    isDeleting.value = false
+  }
 }
 </script>

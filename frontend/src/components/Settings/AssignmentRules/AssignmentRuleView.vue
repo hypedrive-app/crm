@@ -80,7 +80,7 @@
             </template>
             <template #body="{ togglePopover }">
               <div
-                class="p-1 text-ink-gray-6 top-1 absolute bg-white shadow-2xl rounded w-[--reka-popper-anchor-width]"
+                class="p-1 text-ink-gray-6 top-1 absolute bg-surface-white shadow-2xl rounded w-[--reka-popper-anchor-width]"
               >
                 <div
                   v-for="option in priorityOptions"
@@ -170,7 +170,7 @@
                 </template>
                 <template #body-main>
                   <div
-                    class="text-sm text-ink-gray-6 p-2 bg-white rounded-md max-w-96 text-wrap whitespace-pre-wrap leading-5"
+                    class="text-sm text-ink-gray-6 p-2 bg-surface-white rounded-md max-w-96 text-wrap whitespace-pre-wrap leading-5"
                   >
                     <code>{{ assignmentRuleData.assignCondition }}</code>
                   </div>
@@ -254,7 +254,7 @@
                 </template>
                 <template #body-main>
                   <div
-                    class="text-sm text-ink-gray-6 p-2 bg-white rounded-md max-w-96 text-wrap whitespace-pre-wrap leading-5"
+                    class="text-sm text-ink-gray-6 p-2 bg-surface-white rounded-md max-w-96 text-wrap whitespace-pre-wrap leading-5"
                   >
                     <code>{{ assignmentRuleData.unassignCondition }}</code>
                   </div>
@@ -761,11 +761,17 @@ const updateAssignmentRule = async () => {
     assignmentRuleData.value.name !==
     assignmentRuleData.value.assignmentRuleName
   ) {
+    // Track whether the rename actually succeeded so the failure path below
+    // doesn't fall through to fetching the doc under a name that was never
+    // created, and doesn't show a misleading "Updated" success toast right
+    // after the rename error toast.
+    let renameSucceeded = true
     await call('frappe.client.rename_doc', {
       doctype: 'Assignment Rule',
       old_name: assignmentRuleData.value.name,
       new_name: assignmentRuleData.value.assignmentRuleName,
     }).catch(async (er) => {
+      renameSucceeded = false
       const error =
         er?.messages?.[0] ||
         __('Some error occurred while renaming assignment rule')
@@ -774,6 +780,7 @@ const updateAssignmentRule = async () => {
       await getAssignmentRuleData.reload()
       isLoading.value = false
     })
+    if (!renameSucceeded) return
     await getAssignmentRuleData.submit({
       doctype: 'Assignment Rule',
       name: assignmentRuleData.value.assignmentRuleName,
