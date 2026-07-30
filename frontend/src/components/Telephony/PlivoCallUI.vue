@@ -173,6 +173,10 @@ let plivoInstance = null
 let client = null
 let log = ref('Connecting...')
 let currentCallUUID = null
+// True once the SDK has logged in. `log` is internal diagnostic state that is
+// never rendered anywhere, so without this every startup/login failure left the
+// call button looking operational while doing nothing at all.
+const ready = ref(false)
 
 let showCallPopup = ref(false)
 let showSmallCallWindow = ref(false)
@@ -266,6 +270,13 @@ async function startupClient() {
     initializeClient(data.username, data.password)
   } catch (err) {
     log.value = 'An error occurred. ' + err.message
+    // `log` is internal diagnostic state that is never rendered, so a failure
+    // here used to leave the agent with a call button that silently does
+    // nothing. Surface it.
+    ready.value = false
+    toast.error(
+      __('Could not start browser calling: {0}', [err.message || __('unknown error')]),
+    )
   }
 }
 
@@ -284,10 +295,44 @@ function initializeClient(username, password) {
 function addClientListeners() {
   client.on('onLogin', () => {
     log.value = 'Ready to make and receive calls!'
+    ready.value = true
   })
 
   client.on('onLoginFailed', (cause) => {
     log.value = 'Plivo login failed: ' + cause
+    ready.value = false
+    toast.error(
+      __('Browser calling could not sign in to Plivo: {0}', [
+        cause || __('unknown reason'),
+      ]),
+    )
+  })
+
+  // WebRTC unsupported / no media permission. Plivo emits these instead of
+  // failing the call outright, and both were previously swallowed into `log`,
+  // which is why a blocked microphone produced a call that never connected and
+  // never explained itself.
+  client.on('onWebrtcNotSupported', () => {
+    log.value = 'WebRTC not supported'
+    ready.value = false
+    toast.error(
+      __('This browser cannot place calls. Use Chrome, Edge or Safari over HTTPS.'),
+    )
+  })
+
+  client.on('onMediaPermission', (evt) => {
+    // Shape varies by SDK version; treat anything non-granted as a denial.
+    const denied =
+      evt === false ||
+      evt?.error ||
+      (evt?.status && String(evt.status).toLowerCase() !== 'granted')
+    if (!denied) return
+    log.value = 'Microphone permission denied'
+    toast.error(
+      __(
+        'Microphone access is blocked, so the call has no audio. Allow the microphone for this site in your browser settings, then try again.',
+      ),
+    )
   })
 
   client.on('onCalling', () => {
@@ -316,6 +361,7 @@ function addClientListeners() {
 
   client.on('onCallFailed', (causeCode) => {
     log.value = 'Call failed: ' + causeCode
+    toast.error(__('Call failed: {0}', [causeCode || __('unknown reason')]))
     resetCallState()
   })
 
@@ -381,8 +427,22 @@ function cancelCall() {
 function makeOutgoingCall(number) {
   phoneNumber.value = number
 
+  if (!number) {
+    toast.error(__('This record has no phone number to call.'))
+    return
+  }
+
   if (!client || !client.isRegistered()) {
     log.value = 'Client not registered yet.'
+    // This early return is why the call button appeared to do nothing: the
+    // caller got no feedback whatsoever, so a not-yet-registered (or
+    // failed-to-register) client was indistinguishable from a broken button.
+    toast.error(
+      __(
+        'Browser calling is still connecting. Wait a moment and try again — if it keeps failing, check Plivo settings.',
+      ),
+    )
+    startupClient()
     return
   }
 
