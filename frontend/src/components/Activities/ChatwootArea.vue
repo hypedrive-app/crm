@@ -3,17 +3,15 @@
   <div>
     <div
       v-if="activeConversationId"
-      class="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 sm:px-10"
+      class="mb-3 flex items-center gap-2 overflow-x-auto px-3 sm:px-10"
     >
-      <div
-        v-if="conversations.length > 1"
-        class="flex flex-wrap items-center gap-2"
-      >
+      <template v-if="conversations.length > 1">
         <Button
           v-for="conv in conversations"
           :key="conv.id"
           size="sm"
           :variant="conv.id === activeConversationId ? 'solid' : 'subtle'"
+          class="shrink-0"
           @click="$emit('selectConversation', conv.id)"
         >
           <template #prefix>
@@ -30,17 +28,8 @@
             {{ conv.unread_count }}
           </span>
         </Button>
-      </div>
-      <div
-        v-if="assignee?.name"
-        class="flex items-center gap-1.5 text-p-sm text-ink-gray-7"
-      >
-        <Avatar :image="assignee.avatar" :label="assignee.name" size="sm" />
-        <span>{{ __('Assigned to {0}', [assignee.name]) }}</span>
-      </div>
-      <div v-else class="text-p-sm text-ink-gray-5">
-        {{ isResolved ? __('This conversation is resolved') : __('Unassigned conversation') }}
-      </div>
+        <div class="h-5 w-px shrink-0 bg-outline-gray-2" />
+      </template>
       <div class="flex shrink-0 items-center gap-2">
         <Button
           size="sm"
@@ -180,7 +169,7 @@
 </template>
 
 <script setup>
-import { Tooltip, Button, TextInput, Avatar } from 'frappe-ui'
+import { Tooltip, Button, TextInput } from 'frappe-ui'
 import { computed, h, nextTick, ref, watch } from 'vue'
 import { formatDate, sanitizeHTML, timeAgo } from '@/utils'
 
