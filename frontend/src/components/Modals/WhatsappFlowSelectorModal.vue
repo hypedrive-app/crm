@@ -23,10 +23,11 @@
         </div>
       </div>
       <div v-else class="flex flex-col gap-2">
+<!-- border-outline-gray-2 so the row border is theme-aware in dark mode. -->
         <div
           v-for="flow in flows"
           :key="flow.name"
-          class="flex items-center justify-between gap-3 rounded-lg border p-3"
+          class="flex items-center justify-between gap-3 rounded-lg border border-outline-gray-2 p-3"
         >
           <div class="flex min-w-0 flex-col gap-1">
             <div class="flex items-center gap-2">

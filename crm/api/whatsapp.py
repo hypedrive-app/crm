@@ -301,6 +301,63 @@ def get_whatsapp_messages(reference_doctype: str, reference_name: str):
 	return [message for message in messages if message["content_type"] != "reaction"]
 
 
+# Meta's customer-service window: free-form (non-template) messages may only be
+# sent within 24h of the customer's last inbound message. Outside it, Meta
+# rejects free-form sends with error 131047 and only pre-approved templates go
+# through. This mirrors Chatwoot's own `can_reply` logic (24h from the last
+# incoming message's timestamp) so the WhatsApp tab can lock the free-text
+# composer and steer the agent to a template — instead of letting them type a
+# message that silently fails after a Meta round-trip.
+WHATSAPP_REPLY_WINDOW_SECONDS = 24 * 60 * 60
+
+
+@frappe.whitelist()
+def get_whatsapp_reply_window(reference_doctype: str, reference_name: str):
+	"""Return whether the 24h free-form reply window is open for this thread.
+
+	{ can_reply: bool, window_expires_at: str|None, last_incoming_at: str|None }
+	"""
+	validate_access(reference_doctype, reference_name)
+	if not frappe.db.exists("DocType", "WhatsApp Message"):
+		return {"can_reply": False, "window_expires_at": None, "last_incoming_at": None}
+
+	# The thread may be resolved against a Deal whose messages historically
+	# landed on its originating Lead (see get_whatsapp_messages); consider both
+	# so the window reflects the customer's true last inbound message.
+	refs = [(reference_doctype, reference_name)]
+	if reference_doctype == "CRM Deal":
+		lead = frappe.db.get_value("CRM Deal", reference_name, "lead")
+		if lead:
+			refs.append(("CRM Lead", lead))
+
+	last_incoming = None
+	for ref_dt, ref_dn in refs:
+		row = frappe.get_all(
+			"WhatsApp Message",
+			filters={"reference_doctype": ref_dt, "reference_name": ref_dn, "type": "Incoming"},
+			fields=["creation"],
+			order_by="creation desc",
+			limit=1,
+		)
+		if row and (last_incoming is None or row[0].creation > last_incoming):
+			last_incoming = row[0].creation
+
+	if not last_incoming:
+		# No inbound message ever: the window was never opened, so only
+		# templates can initiate. (A brand-new outbound-first conversation.)
+		return {"can_reply": False, "window_expires_at": None, "last_incoming_at": None}
+
+	expires_at = frappe.utils.add_to_date(
+		last_incoming, seconds=WHATSAPP_REPLY_WINDOW_SECONDS, as_datetime=True
+	)
+	can_reply = frappe.utils.now_datetime() < expires_at
+	return {
+		"can_reply": bool(can_reply),
+		"window_expires_at": str(expires_at),
+		"last_incoming_at": str(last_incoming),
+	}
+
+
 @frappe.whitelist()
 def create_whatsapp_message(
 	reference_doctype: str,

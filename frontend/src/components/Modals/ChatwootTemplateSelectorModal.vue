@@ -8,7 +8,7 @@
             v-model="search"
             class="w-full"
             type="text"
-            :placeholder="__('Welcome Message')"
+            :placeholder="__('Search templates by name or content...')"
           >
             <template #prefix>
               <span
@@ -28,13 +28,15 @@
           v-else-if="filteredTemplates.length"
           class="mt-2 grid max-h-[560px] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-3"
         >
+<!-- min-h (not fixed h-56) so short cards shrink; line-clamp still caps long bodies. -->
           <div
             v-for="template in filteredTemplates"
             :key="`${template.name}-${template.language}`"
-            class="flex h-56 cursor-pointer flex-col gap-2 rounded-lg border p-3 hover:bg-surface-gray-2"
+            class="flex min-h-56 cursor-pointer flex-col gap-2 rounded-lg border border-outline-gray-2 p-3 hover:bg-surface-gray-2"
             @click="selectTemplate(template)"
           >
-            <div class="flex items-start justify-between gap-2 border-b pb-2">
+            <!-- border-outline-gray-2: bare `border-b` is not theme-aware. -->
+            <div class="flex items-start justify-between gap-2 border-b border-outline-gray-2 pb-2">
               <div
                 class="text-base-semibold truncate"
                 :title="template.name"
@@ -68,19 +70,41 @@
         </div>
       </div>
       <div v-else class="flex flex-col gap-4">
-        <div class="rounded-lg border p-3 text-sm text-ink-gray-6">
+        <div class="rounded-lg border border-outline-gray-2 p-3 text-sm text-ink-gray-6">
+          <!-- Media headers (IMAGE/VIDEO/DOCUMENT/LOCATION) carry no text, so show a
+               placeholder chip — otherwise the agent sends blind, unaware a media header exists. -->
+          <div
+            v-if="mediaHeaderLabel"
+            class="mb-2 inline-flex w-fit items-center gap-1 rounded bg-surface-gray-2 px-2 py-1 text-xs text-ink-gray-6"
+          >
+            {{ mediaHeaderLabel }}
+          </div>
           <div
             v-if="headerText"
-            class="mb-2 border-b pb-2 text-sm-semibold text-ink-gray-8 whitespace-pre-line"
+            class="mb-2 border-b border-outline-gray-2 pb-2 text-sm-semibold text-ink-gray-8 whitespace-pre-line"
           >
             {{ renderedHeader }}
           </div>
           <div class="whitespace-pre-line">{{ renderedBody }}</div>
           <div
             v-if="footerText"
-            class="mt-2 border-t pt-2 text-xs text-ink-gray-5 whitespace-pre-line"
+            class="mt-2 border-t border-outline-gray-2 pt-2 text-xs text-ink-gray-5 whitespace-pre-line"
           >
             {{ footerText }}
+          </div>
+          <!-- Preview template buttons as disabled chips so the agent knows what
+               CTAs/quick-replies the recipient will see. -->
+          <div
+            v-if="templateButtons.length"
+            class="mt-2 flex flex-wrap gap-1.5 border-t border-outline-gray-2 pt-2"
+          >
+            <span
+              v-for="(btn, i) in templateButtons"
+              :key="'btn-' + i"
+              class="rounded border border-outline-gray-2 px-2 py-0.5 text-xs text-ink-gray-5"
+            >
+              {{ btn }}
+            </span>
           </div>
         </div>
         <div
@@ -122,19 +146,27 @@
           {{ __('This template has no parameters.') }}
         </div>
         <ErrorMessage :message="validationError" />
-        <div class="flex justify-end gap-2">
-          <Button
-            :label="__('Back')"
-            :disabled="sending"
-            @click="selectedTemplate = null"
-          />
-          <Button
-            :label="__('Send')"
-            variant="solid"
-            :loading="sending"
-            @click="confirmSend"
-          />
-        </div>
+      </div>
+    </template>
+    <!-- Actions belong in the Dialog #actions slot (repo standard), not hand-rolled
+         inside #default. Only shown on the fill-parameters step. -->
+    <template v-if="selectedTemplate" #actions>
+      <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button
+          class="w-full sm:w-auto"
+          variant="subtle"
+          :label="__('Back')"
+          :disabled="sending"
+          @click="selectedTemplate = null"
+        />
+        <Button
+          class="w-full sm:w-auto"
+          :label="__('Send')"
+          variant="solid"
+          :loading="sending"
+          :disabled="!allParamsFilled"
+          @click="confirmSend"
+        />
       </div>
     </template>
   </Dialog>
@@ -234,6 +266,34 @@ const headerSampleValues = computed(() =>
 const headerText = computed(() => headerComponent(selectedTemplate.value)?.text || '')
 const footerText = computed(() => footerTextOf(selectedTemplate.value))
 
+// Non-TEXT headers (IMAGE/VIDEO/DOCUMENT/LOCATION) carry no text — surface them as a
+// labelled chip so the agent isn't sending a media template blind.
+const MEDIA_HEADER_LABELS = {
+  IMAGE: '📷 ' + __('Image header'),
+  VIDEO: '🎬 ' + __('Video header'),
+  DOCUMENT: '📄 ' + __('Document header'),
+  LOCATION: '📍 ' + __('Location header'),
+}
+const mediaHeaderLabel = computed(() => {
+  const format = headerComponent(selectedTemplate.value)?.format
+  return format && format !== 'TEXT' ? MEDIA_HEADER_LABELS[format] || '' : ''
+})
+
+// Button titles from the BUTTONS component, previewed as read-only chips.
+const templateButtons = computed(() => {
+  const buttons = findComponent(selectedTemplate.value, 'BUTTONS')?.buttons
+  if (!Array.isArray(buttons)) return []
+  return buttons.map((b) => b.text || b.title || '').filter(Boolean)
+})
+
+// Gate Send until every placeholder is filled — Meta rejects param-count mismatches
+// (#132000), so validating client-side avoids a blind failed send.
+const allParamsFilled = computed(
+  () =>
+    bodyParamValues.value.every((v) => v && v.trim()) &&
+    headerParamValues.value.every((v) => v && v.trim()),
+)
+
 function renderWithParams(text, values) {
   let rendered = text || ''
   values.forEach((val, idx) => {
@@ -267,7 +327,7 @@ function selectTemplate(template) {
 }
 
 function confirmSend() {
-  if (bodyParamValues.value.some((v) => !v) || headerParamValues.value.some((v) => !v)) {
+  if (!allParamsFilled.value) {
     validationError.value = __('Please fill in all template parameters before sending.')
     return
   }

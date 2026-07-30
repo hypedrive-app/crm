@@ -13,9 +13,9 @@
             :loading="locating"
             @click="useCurrentLocation"
           />
-          <div v-if="geoError" class="text-sm text-ink-red-4">
-            {{ geoError }}
-          </div>
+<!-- Use ErrorMessage for consistency with validationError below; raw text-ink-red-4
+               was a one-off style. -->
+          <ErrorMessage v-if="geoError" :message="geoError" />
           <div class="text-sm text-ink-gray-5">
             {{ __('Or enter coordinates manually below.') }}
           </div>
@@ -67,16 +67,25 @@
         </div>
 
         <ErrorMessage :message="validationError" />
-
-        <div class="flex justify-end gap-2">
-          <Button :label="__('Cancel')" @click="show = false" />
-          <Button
-            :label="__('Send')"
-            variant="solid"
-            :loading="sending"
-            @click="confirmSend"
-          />
-        </div>
+      </div>
+    </template>
+    <!-- Actions in the Dialog #actions slot (repo standard); Cancel subtle,
+         full-width stacked on mobile. -->
+    <template #actions>
+      <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button
+          class="w-full sm:w-auto"
+          variant="subtle"
+          :label="__('Cancel')"
+          @click="show = false"
+        />
+        <Button
+          class="w-full sm:w-auto"
+          :label="__('Send')"
+          variant="solid"
+          :loading="sending"
+          @click="confirmSend"
+        />
       </div>
     </template>
   </Dialog>

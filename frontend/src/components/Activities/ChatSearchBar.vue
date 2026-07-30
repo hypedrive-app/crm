@@ -1,5 +1,9 @@
 <template>
-  <div class="mb-3 px-3 sm:px-10">
+  <!-- No horizontal padding here: both callers (WhatsAppArea, ChatwootArea)
+       mount this inside a wrapper already padded `px-3 sm:px-10`, so padding
+       here double-indented the search field past the message column. The Area
+       wrapper is the single source of horizontal padding. -->
+  <div class="mb-3">
     <TextInput
       ref="inputRef"
       v-model="query"

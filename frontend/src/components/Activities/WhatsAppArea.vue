@@ -1,7 +1,7 @@
 <!-- eslint-disable vue/no-v-html -->
 <template>
   <div>
-    <div v-if="messages.length" class="mb-3 flex items-center gap-2 px-3 sm:px-10">
+    <div v-if="messages.length" class="mb-3 flex items-center gap-2">
       <Tooltip :text="__('Search in this conversation')">
         <Button
           size="sm"
@@ -33,7 +33,12 @@
     >
       <div
         :id="whatsapp.name"
-        class="group/message relative max-w-[90%] rounded-md bg-surface-gray-1 text-ink-gray-9 p-1.5 pl-2 text-base shadow-sm"
+        class="group/message relative max-w-[90%] break-words p-1.5 pl-2 text-base text-ink-gray-9 shadow-sm"
+        :class="
+          whatsapp.type == 'Outgoing'
+            ? 'rounded-lg rounded-tr-sm bg-surface-green-2'
+            : 'rounded-lg rounded-tl-sm bg-surface-gray-2'
+        "
       >
         <Badge
           v-if="isFailed(whatsapp)"
@@ -72,9 +77,13 @@
           </div>
         </div>
         <div class="flex gap-2 justify-between">
+          <!-- The reaction hangs off the bubble's outer corner (WhatsApp
+               convention): bottom-left on an outgoing bubble, bottom-right on
+               incoming, so it never overlaps the neighbouring bubble. -->
           <div
             v-if="whatsapp.reaction"
-            class="absolute -bottom-5 flex gap-1 rounded-full border border-outline-gray-1 bg-surface-modal p-1 shadow-sm"
+            class="absolute -bottom-5 flex gap-1 rounded-full border border-outline-gray-1 bg-surface-white p-1 shadow-sm"
+            :class="whatsapp.type == 'Outgoing' ? 'left-2' : 'right-2'"
           >
             <div class="flex size-4 items-center justify-center">
               {{ whatsapp.reaction }}
@@ -84,6 +93,12 @@
             v-if="whatsapp.message_type == 'Template'"
             class="flex flex-col gap-2"
           >
+            <div
+              class="flex items-center gap-1 text-2xs font-medium uppercase text-ink-gray-4"
+            >
+              <span class="lucide-layout-template size-3 shrink-0" aria-hidden="true" />
+              {{ __('Template') }}
+            </div>
             <div v-if="whatsapp.header" class="text-base-semibold">
               {{ whatsapp.header }}
             </div>
@@ -125,7 +140,7 @@
               <div
                 v-for="btn in interactivePayload(whatsapp).buttons"
                 :key="btn.id"
-                class="rounded-md border border-outline-gray-2 bg-surface-modal px-2.5 py-1 text-sm-medium text-ink-blue-link"
+                class="rounded-md border border-outline-gray-2 bg-surface-white px-2.5 py-1 text-sm-medium text-ink-gray-8"
               >
                 {{ btn.title }}
               </div>
@@ -148,9 +163,9 @@
                 <div
                   v-for="row in section.rows"
                   :key="row.id"
-                  class="rounded-md border border-outline-gray-2 bg-surface-modal px-2.5 py-1.5"
+                  class="rounded-md border border-outline-gray-2 bg-surface-white px-2.5 py-1.5"
                 >
-                  <div class="text-sm-medium text-ink-blue-link">
+                  <div class="text-sm-medium text-ink-gray-8">
                     {{ row.title }}
                   </div>
                   <div v-if="row.description" class="text-xs text-ink-gray-5">
@@ -159,8 +174,9 @@
                 </div>
               </div>
               <div
-                class="mt-0.5 self-start rounded-md border border-outline-gray-2 px-2.5 py-1 text-sm-medium text-ink-blue-link"
+                class="mt-0.5 flex items-center gap-1 self-start rounded-md border border-outline-gray-2 px-2.5 py-1 text-sm-medium text-ink-gray-7"
               >
+                <span class="lucide-list size-3 shrink-0" aria-hidden="true" />
                 {{ interactivePayload(whatsapp).listButtonLabel }}
               </div>
             </div>
@@ -171,7 +187,7 @@
           />
           <div
             v-else-if="whatsapp.content_type == 'location' && locationPayload(whatsapp)"
-            class="flex w-56 flex-col gap-1 rounded-md border border-outline-gray-2 bg-surface-modal p-2.5"
+            class="flex w-full max-w-56 flex-col gap-1 rounded-md border border-outline-gray-2 bg-surface-white p-2.5"
           >
             <div class="flex items-center gap-1.5 text-sm-medium text-ink-gray-8">
               <LocationIcon class="size-3.5 shrink-0 text-ink-gray-5" />
@@ -185,9 +201,6 @@
             >
               {{ locationPayload(whatsapp).address }}
             </div>
-            <div class="text-2xs text-ink-gray-4">
-              {{ locationPayload(whatsapp).latitude }}, {{ locationPayload(whatsapp).longitude }}
-            </div>
             <a
               :href="mapsUrl(locationPayload(whatsapp))"
               target="_blank"
@@ -199,7 +212,7 @@
           </div>
           <div
             v-else-if="whatsapp.content_type == 'contact' && contactPayload(whatsapp)"
-            class="flex w-56 flex-col gap-1 rounded-md border border-outline-gray-2 bg-surface-modal p-2.5"
+            class="flex w-full max-w-56 flex-col gap-1 rounded-md border border-outline-gray-2 bg-surface-white p-2.5"
           >
             <div class="flex items-center gap-1.5 text-sm-medium text-ink-gray-8">
               <ContactIcon class="size-3.5 shrink-0 text-ink-gray-5" />
@@ -215,11 +228,23 @@
             </div>
           </div>
           <div v-else-if="whatsapp.content_type == 'image'">
+            <!-- WhatsApp/Meta media URLs can expire or 404; without an error
+                 fallback the bubble shows a broken-image glyph with no recovery.
+                 On error swap to a labeled placeholder that still links to the
+                 file. -->
+            <MediaUnavailable
+              v-if="mediaFailed(whatsapp)"
+              :label="__('Image unavailable')"
+              :href="whatsapp.attach"
+            />
             <img
+              v-else
               :src="whatsapp.attach"
-              :alt="__('Image attachment')"
+              :alt="hasCaption(whatsapp) ? whatsapp.message : __('Image attachment')"
+              loading="lazy"
               class="max-h-40 w-auto max-w-full cursor-pointer rounded-md"
               @click="() => openFileInAnotherTab(whatsapp.attach)"
+              @error="() => markMediaFailed(whatsapp)"
             />
             <div
               v-if="hasCaption(whatsapp)"
@@ -248,16 +273,36 @@
             v-else-if="whatsapp.content_type == 'audio'"
             class="flex items-center gap-2"
           >
-            <audio :src="whatsapp.attach" controls class="max-w-full" />
+            <MediaUnavailable
+              v-if="mediaFailed(whatsapp)"
+              :label="__('Audio unavailable')"
+              :href="whatsapp.attach"
+            />
+            <!-- Constrained width + labeled container so the native player
+                 doesn't stretch full-bleed or clash on a tinted bubble. -->
+            <audio
+              v-else
+              :src="whatsapp.attach"
+              controls
+              class="w-56 max-w-full"
+              @error="() => markMediaFailed(whatsapp)"
+            />
           </div>
           <div
             v-else-if="whatsapp.content_type == 'video'"
             class="flex flex-col items-start gap-2"
           >
+            <MediaUnavailable
+              v-if="mediaFailed(whatsapp)"
+              :label="__('Video unavailable')"
+              :href="whatsapp.attach"
+            />
             <video
+              v-else
               :src="whatsapp.attach"
               controls
               class="max-h-40 w-auto max-w-full rounded-md"
+              @error="() => markMediaFailed(whatsapp)"
             />
             <div
               v-if="hasCaption(whatsapp)"
@@ -338,6 +383,7 @@ import LocationIcon from '@/components/Icons/LocationIcon.vue'
 import ContactIcon from '@/components/Icons/ContactIcon.vue'
 import ChatSearchBar from '@/components/Activities/ChatSearchBar.vue'
 import DeliveryTick from '@/components/Activities/DeliveryTick.vue'
+import MediaUnavailable from '@/components/Activities/MediaUnavailable.vue'
 import {
   formatWhatsAppMarkup,
   useMessageGrouping,
@@ -441,7 +487,7 @@ function interactivePayload(whatsapp) {
         sections: data.sections || [],
       }
     }
-  } catch (e) {
+  } catch {
     parsed = null
   }
   interactivePayloadCache.set(whatsapp, parsed)
@@ -459,7 +505,7 @@ function locationPayload(whatsapp) {
     const parsed = typeof data == 'string' ? JSON.parse(data) : data
     if (parsed?.latitude == null || parsed?.longitude == null) return null
     return parsed
-  } catch (e) {
+  } catch {
     return null
   }
 }
@@ -482,13 +528,33 @@ function contactPayload(whatsapp) {
       formatted_name: first.name?.formatted_name || '',
       phone: first.phones?.[0]?.phone || '',
     }
-  } catch (e) {
+  } catch {
     return null
   }
 }
 
 function openFileInAnotherTab(url) {
-  window.open(url, '_blank')
+  // noopener/noreferrer: without it the opened tab gets a live window.opener
+  // handle back to this app (reverse-tabnabbing).
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+// Tracks messages whose media <img>/<video>/<audio> failed to load (expired or
+// 404'd Meta URL) so the bubble can swap to a labeled fallback instead of a
+// broken glyph. A reactive Set keyed on message name; `reactiveFailedTick`
+// forces the computed getters to re-run when the Set mutates in place.
+const failedMedia = new Set()
+const failedMediaTick = ref(0)
+
+function markMediaFailed(whatsapp) {
+  if (!whatsapp?.name || failedMedia.has(whatsapp.name)) return
+  failedMedia.add(whatsapp.name)
+  failedMediaTick.value++
+}
+
+function mediaFailed(whatsapp) {
+  // Touch the tick so Vue tracks this as a dependency and re-renders on failure.
+  return failedMediaTick.value >= 0 && failedMedia.has(whatsapp?.name)
 }
 
 // The WhatsApp Message doctype's `status` is a free-text Data field, not an

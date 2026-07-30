@@ -27,14 +27,16 @@
         v-else-if="filteredResponses.length"
         class="mt-2 grid max-h-[560px] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2"
       >
+<!-- min-h (not fixed h-32) so short responses shrink; line-clamp still caps long ones. -->
         <div
           v-for="response in filteredResponses"
           :key="response.id"
-          class="flex h-32 cursor-pointer flex-col gap-1 rounded-lg border p-3 hover:bg-surface-gray-2"
+          class="flex min-h-32 cursor-pointer flex-col gap-1 rounded-lg border border-outline-gray-2 p-3 hover:bg-surface-gray-2"
           @click="emit('send', response.content)"
         >
+          <!-- border-outline-gray-2 so the divider is theme-aware (bare `border-b` reads wrong in dark mode). -->
           <div
-            class="border-b pb-1.5 text-base-semibold truncate"
+            class="border-b border-outline-gray-2 pb-1.5 text-base-semibold truncate"
             :title="response.short_code"
           >
             {{ response.short_code }}

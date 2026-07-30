@@ -32,21 +32,28 @@
     </div>
   </div>
   <div v-else class="flex items-end gap-2 px-3 py-2.5 sm:px-10" v-bind="$attrs">
-    <div class="flex h-8 shrink-0 items-center gap-2">
+    <div class="flex h-8 shrink-0 items-center gap-1">
       <Tooltip :text="__('Canned Responses')">
-        <ChatwootIcon
-          class="size-4.5 cursor-pointer text-ink-gray-5 hover:text-ink-gray-7"
-          :class="{ 'pointer-events-none opacity-40': !conversationId }"
+        <button
+          type="button"
+          :aria-label="__('Canned Responses')"
+          :disabled="!conversationId"
+          class="flex size-7 items-center justify-center rounded text-ink-gray-5 hover:bg-surface-gray-2 hover:text-ink-gray-7 disabled:pointer-events-none disabled:opacity-40"
           @click="showCannedResponses = true"
-        />
+        >
+          <ChatwootIcon class="size-4.5" />
+        </button>
       </Tooltip>
       <Tooltip :text="__('Send Template')">
-        <span
-          class="lucide-file-text size-4.5 cursor-pointer text-ink-gray-5 hover:text-ink-gray-7"
-          :class="{ 'pointer-events-none opacity-40': !conversationId }"
-          aria-hidden="true"
+        <button
+          type="button"
+          :aria-label="__('Send Template')"
+          :disabled="!conversationId"
+          class="flex size-7 items-center justify-center rounded text-ink-gray-5 hover:bg-surface-gray-2 hover:text-ink-gray-7 disabled:pointer-events-none disabled:opacity-40"
           @click="showTemplates = true"
-        />
+        >
+          <span class="lucide-file-text size-4.5" aria-hidden="true" />
+        </button>
       </Tooltip>
     </div>
     <Textarea
@@ -66,7 +73,7 @@
     <Button
       variant="solid"
       class="shrink-0"
-      :disabled="!conversationId || !content"
+      :disabled="!conversationId || !content.trim()"
       @click="sendTextMessage()"
     >
       {{ __('Send') }}

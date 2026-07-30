@@ -40,7 +40,7 @@
       v-else-if="
         activities?.length ||
         (whatsappMessages.data?.length && title == 'WhatsApp') ||
-        (title == 'Chatwoot' && (chatwootConversations.data?.length || chatwootMessages.data?.messages?.length))
+        (title == 'Chatwoot' && chatwootEnabled)
       "
       class="activities"
     >
@@ -440,6 +440,8 @@
       v-model:reply="replyMessage"
       v-model:whatsapp="whatsappMessages"
       :doctype="doctype"
+      :can-reply="whatsappCanReply"
+      @send-template="showWhatsappTemplates = true"
       @scroll="scroll"
     />
     <ChatwootBox
@@ -637,12 +639,51 @@ const whatsappMessages = createResource({
   onSuccess: () => nextTick(() => scroll()),
 })
 
+// Meta's 24-hour customer-service window for the NATIVE WhatsApp tab — the
+// same constraint Chatwoot exposes as `can_reply`, but the native
+// frappe_whatsapp path has no equivalent, so an agent could type free text into
+// an expired thread and only learn it failed after Meta's round-trip. This
+// resource mirrors the Chatwoot behaviour: it reports whether a free-form
+// (non-template) reply will be accepted, so WhatsAppBox can lock the composer
+// and steer to a template instead.
+const whatsappReplyWindow = createResource({
+  url: 'crm.api.whatsapp.get_whatsapp_reply_window',
+  params: {
+    reference_doctype: props.doctype,
+    reference_name: props.docname,
+  },
+  auto: false,
+})
+
+// Default to repliable while unknown (null/loading) so the composer is never
+// gratuitously locked on a slow fetch — a free-form send during that window
+// still fails safe (the send path surfaces Meta's rejection), whereas a
+// wrongly-locked composer blocks a legitimate reply with no recourse.
+const whatsappCanReply = computed(
+  () => whatsappReplyWindow.data?.can_reply !== false,
+)
+
 watch(
   whatsappEnabled,
   (enabled) => {
-    if (enabled) whatsappMessages.fetch()
+    if (enabled) {
+      whatsappMessages.fetch()
+      whatsappReplyWindow.fetch()
+    }
   },
   { immediate: true },
+)
+
+// The window is anchored on the customer's LAST inbound message, so it moves
+// every time they reply — refetch whenever the thread changes or the tab is
+// opened, keeping the lock state honest without a dedicated realtime channel.
+watch(
+  [title, () => whatsappMessages.data],
+  () => {
+    if (title.value === 'WhatsApp' && whatsappEnabled.value) {
+      whatsappReplyWindow.fetch()
+    }
+  },
 )
 
 // Mark unread inbound WhatsApp messages as read once the tab is actually

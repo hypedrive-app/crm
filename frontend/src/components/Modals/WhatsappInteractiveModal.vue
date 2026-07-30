@@ -52,6 +52,7 @@
             <Button
               variant="ghost"
               icon="lucide-x"
+              :aria-label="__('Remove button {0}', [index + 1])"
               @click="removeButton(index)"
             />
           </div>
@@ -98,6 +99,7 @@
                 v-if="sections.length > 1"
                 variant="ghost"
                 icon="lucide-x"
+                :aria-label="__('Remove section {0}', [sectionIndex + 1])"
                 @click="removeSection(sectionIndex)"
               />
             </div>
@@ -115,6 +117,7 @@
                 <Button
                   variant="ghost"
                   icon="lucide-x"
+                  :aria-label="__('Remove option {0}', [rowIndex + 1])"
                   @click="removeRow(sectionIndex, rowIndex)"
                 />
               </div>
@@ -135,16 +138,25 @@
         </div>
 
         <ErrorMessage :message="validationError" />
-
-        <div class="flex justify-end gap-2">
-          <Button :label="__('Cancel')" @click="show = false" />
-          <Button
-            :label="__('Send')"
-            variant="solid"
-            :loading="sending"
-            @click="confirmSend"
-          />
-        </div>
+      </div>
+    </template>
+    <!-- Actions in the Dialog #actions slot (repo standard); Cancel subtle,
+         full-width stacked on mobile. -->
+    <template #actions>
+      <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button
+          class="w-full sm:w-auto"
+          variant="subtle"
+          :label="__('Cancel')"
+          @click="show = false"
+        />
+        <Button
+          class="w-full sm:w-auto"
+          :label="__('Send')"
+          variant="solid"
+          :loading="sending"
+          @click="confirmSend"
+        />
       </div>
     </template>
   </Dialog>

@@ -31,14 +31,15 @@
           v-if="filteredTemplates.length"
           class="mt-2 grid max-h-[560px] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-3"
         >
+<!-- min-h (not fixed h-56) so short cards shrink; border-outline-gray-2 for dark-mode-safe borders. -->
           <div
             v-for="template in filteredTemplates"
             :key="template.name"
-            class="flex h-56 cursor-pointer flex-col gap-2 rounded-lg border p-3 hover:bg-surface-gray-2"
+            class="flex min-h-56 cursor-pointer flex-col gap-2 rounded-lg border border-outline-gray-2 p-3 hover:bg-surface-gray-2"
             @click="selectTemplate(template)"
           >
             <div
-              class="border-b pb-2 text-base-semibold truncate"
+              class="border-b border-outline-gray-2 pb-2 text-base-semibold truncate"
               :title="template.name"
             >
               {{ template.name }}
@@ -66,7 +67,7 @@
         </div>
       </div>
       <div v-else class="flex flex-col gap-4">
-        <div class="rounded-lg border p-3 text-sm text-ink-gray-6 whitespace-pre-line">
+        <div class="rounded-lg border border-outline-gray-2 p-3 text-sm text-ink-gray-6 whitespace-pre-line">
           {{ previewText }}
         </div>
         <div
@@ -108,14 +109,24 @@
           {{ __('This template has no parameters.') }}
         </div>
         <ErrorMessage :message="validationError" />
-        <div class="flex justify-end gap-2">
-          <Button :label="__('Back')" @click="selectedTemplate = null" />
-          <Button
-            :label="__('Send')"
-            variant="solid"
-            @click="confirmSend"
-          />
-        </div>
+      </div>
+    </template>
+    <!-- Actions in the Dialog #actions slot (repo standard); only on the fill step. -->
+    <template v-if="selectedTemplate" #actions>
+      <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button
+          class="w-full sm:w-auto"
+          variant="subtle"
+          :label="__('Back')"
+          @click="selectedTemplate = null"
+        />
+        <Button
+          class="w-full sm:w-auto"
+          :label="__('Send')"
+          variant="solid"
+          :disabled="!allParamsFilled"
+          @click="confirmSend"
+        />
       </div>
     </template>
   </Dialog>
@@ -196,6 +207,14 @@ const bodySampleValues = computed(() =>
 )
 const headerSampleValues = computed(() => [])
 
+// Gate Send until every placeholder is filled — Meta rejects param-count
+// mismatches (#132000), so validate client-side before the send.
+const allParamsFilled = computed(
+  () =>
+    bodyParamValues.value.every((v) => v && v.trim()) &&
+    headerParamValues.value.every((v) => v && v.trim()),
+)
+
 const previewText = computed(() => {
   let text = selectedTemplate.value?.template || ''
   bodyParamValues.value.forEach((val, idx) => {
@@ -219,7 +238,7 @@ function selectTemplate(template) {
 }
 
 function confirmSend() {
-  if (bodyParamValues.value.some((v) => !v) || headerParamValues.value.some((v) => !v)) {
+  if (!allParamsFilled.value) {
     validationError.value = __('Please fill in all template parameters before sending.')
     return
   }

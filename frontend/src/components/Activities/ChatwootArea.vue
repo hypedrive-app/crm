@@ -26,8 +26,8 @@
       </div>
     </div>
     <div
-      v-if="activeConversationId"
-      class="mb-3 flex items-center gap-2 overflow-x-auto px-3 sm:px-10"
+      v-else-if="activeConversationId"
+      class="mb-3 flex items-center gap-2 overflow-x-auto"
     >
       <template v-if="conversations.length > 1">
         <Button
@@ -88,22 +88,26 @@
           <Button
             size="sm"
             :variant="showSearch ? 'solid' : 'subtle'"
+            :aria-label="__('Search in this conversation')"
             @click="toggleSearch"
           >
             <span class="lucide-search size-3.5" aria-hidden="true" />
           </Button>
         </Tooltip>
+        <!-- Deep-link out to the Chatwoot dashboard. Rendered as a real anchor
+             (not an <a> nested inside a frappe-ui <Button>, which produced
+             invalid <a>-in-<button> markup with a muddled hit area) styled to
+             match the sibling subtle icon buttons. -->
         <Tooltip v-if="chatwootUrl" :text="__('Open in Chatwoot')">
-          <Button size="sm" variant="subtle">
-            <a
-              :href="chatwootUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="flex items-center"
-            >
-              <span class="lucide-external-link size-3.5" aria-hidden="true" />
-            </a>
-          </Button>
+          <a
+            :href="chatwootUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            :aria-label="__('Open in Chatwoot')"
+            class="flex size-7 items-center justify-center rounded bg-surface-gray-2 text-ink-gray-6 hover:bg-surface-gray-3 hover:text-ink-gray-8"
+          >
+            <span class="lucide-external-link size-3.5" aria-hidden="true" />
+          </a>
         </Tooltip>
       </div>
     </div>
@@ -131,7 +135,12 @@
           v-for="(message, idx) in group.messages"
           :id="`cw-msg-${message.id}`"
           :key="message.id"
-          class="group/message relative rounded-md bg-surface-gray-1 p-1.5 pl-2 text-base text-ink-gray-9 shadow-sm"
+          class="group/message relative break-words p-1.5 pl-2 text-base text-ink-gray-9 shadow-sm"
+          :class="
+            group.direction == 'outgoing'
+              ? 'rounded-lg rounded-tr-sm bg-surface-blue-2'
+              : 'rounded-lg rounded-tl-sm bg-surface-gray-2'
+          "
         >
           <div
             v-if="idx === 0 && message.sender?.name"
@@ -139,8 +148,64 @@
           >
             {{ message.sender.name }}
           </div>
+          <!-- A shared location arriving through a Chatwoot-native WhatsApp
+               inbox carries no `content` — its lat/long/name land on
+               `content_attributes`. Without this branch it rendered as a blank
+               "Template message" fallback (asymmetric with the native WhatsApp
+               tab, which draws a proper map-pin card). -->
           <div
-            v-if="message.content"
+            v-if="locationPayload(message)"
+            class="flex w-56 flex-col gap-1 rounded-md border border-outline-gray-2 bg-surface-modal p-2.5"
+          >
+            <div class="flex items-center gap-1.5 text-sm-medium text-ink-gray-8">
+              <span
+                class="lucide-map-pin size-3.5 shrink-0 text-ink-gray-5"
+                aria-hidden="true"
+              />
+              <span class="truncate">
+                {{ locationPayload(message).name || __('Shared Location') }}
+              </span>
+            </div>
+            <div
+              v-if="locationPayload(message).address"
+              class="text-xs text-ink-gray-5"
+            >
+              {{ locationPayload(message).address }}
+            </div>
+            <a
+              :href="mapsUrl(locationPayload(message))"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="mt-1 text-sm-medium text-ink-blue-link"
+            >
+              {{ __('View on Map') }}
+            </a>
+          </div>
+          <!-- A shared contact card: Chatwoot stores the vCard-shaped data on
+               content_attributes.contacts (or .contact). Same asymmetry fix as
+               location above. -->
+          <div
+            v-else-if="contactPayload(message)"
+            class="flex w-56 flex-col gap-1 rounded-md border border-outline-gray-2 bg-surface-modal p-2.5"
+          >
+            <div class="flex items-center gap-1.5 text-sm-medium text-ink-gray-8">
+              <span
+                class="lucide-user size-3.5 shrink-0 text-ink-gray-5"
+                aria-hidden="true"
+              />
+              <span class="truncate">
+                {{ contactPayload(message).name || __('Shared Contact') }}
+              </span>
+            </div>
+            <div
+              v-if="contactPayload(message).phone"
+              class="text-xs text-ink-gray-5"
+            >
+              {{ contactPayload(message).phone }}
+            </div>
+          </div>
+          <div
+            v-else-if="message.content"
             v-html="formatPlainMessage(message.content)"
           />
           <div v-else class="italic text-ink-gray-5">
@@ -151,24 +216,36 @@
             class="mt-1.5 flex flex-col gap-1.5"
           >
             <div v-for="att in message.attachments" :key="att.id">
+              <!-- Chatwoot attachment data_urls can be auth-gated/expired; on
+                   load failure swap to a labeled fallback that still links out
+                   rather than a broken glyph. -->
+              <MediaUnavailable
+                v-if="attFailed(att)"
+                :label="attFallbackLabel(att)"
+                :href="att.data_url"
+              />
               <img
-                v-if="att.file_type == 'image'"
+                v-else-if="att.file_type == 'image'"
                 :src="att.data_url"
                 :alt="__('Image attachment')"
+                loading="lazy"
                 class="max-h-40 w-auto max-w-full cursor-pointer rounded-md"
                 @click="() => openFileInAnotherTab(att.data_url)"
+                @error="() => markAttFailed(att)"
               />
               <video
                 v-else-if="att.file_type == 'video'"
                 :src="att.data_url"
                 controls
                 class="max-h-40 w-auto max-w-full rounded-md"
+                @error="() => markAttFailed(att)"
               />
               <audio
                 v-else-if="att.file_type == 'audio'"
                 :src="att.data_url"
                 controls
-                class="max-w-full"
+                class="w-56 max-w-full"
+                @error="() => markAttFailed(att)"
               />
               <a
                 v-else
@@ -208,9 +285,10 @@
 <script setup>
 import ChatSearchBar from '@/components/Activities/ChatSearchBar.vue'
 import DeliveryTick from '@/components/Activities/DeliveryTick.vue'
+import MediaUnavailable from '@/components/Activities/MediaUnavailable.vue'
 import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
 import { Tooltip, Button } from 'frappe-ui'
-import { computed, toRef } from 'vue'
+import { computed, ref, toRef } from 'vue'
 import {
   formatPlainMessage,
   useMessageGrouping,
@@ -265,7 +343,76 @@ function attachmentLabel(attachment) {
 }
 
 function openFileInAnotherTab(url) {
-  window.open(url, '_blank')
+  // noopener/noreferrer: without it the opened tab gets a live window.opener
+  // handle back to this app (reverse-tabnabbing).
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+// Tracks attachments whose media failed to load (expired/auth-gated Chatwoot
+// data_url) so the bubble can swap to a labeled fallback. Keyed on attachment
+// id; the tick forces the getter to re-run when the Set mutates in place.
+const failedAtt = new Set()
+const failedAttTick = ref(0)
+
+function markAttFailed(att) {
+  if (att?.id == null || failedAtt.has(att.id)) return
+  failedAtt.add(att.id)
+  failedAttTick.value++
+}
+
+function attFailed(att) {
+  return failedAttTick.value >= 0 && failedAtt.has(att?.id)
+}
+
+function attFallbackLabel(att) {
+  const type = att?.file_type
+  if (type === 'image') return __('Image unavailable')
+  if (type === 'video') return __('Video unavailable')
+  if (type === 'audio') return __('Audio unavailable')
+  return __('Attachment unavailable')
+}
+
+// Chatwoot delivers a shared WhatsApp location as a message with no `content`,
+// with the coordinates on `content_attributes`. Field naming varies across
+// Chatwoot versions (a nested `location` object, or flat lat/long keys), so
+// probe both shapes and return null unless real coordinates are present — a
+// null result falls through to the normal text/template render, so this can
+// never blank out an ordinary message.
+function locationPayload(message) {
+  const attrs = message?.content_attributes
+  if (!attrs) return null
+  const loc = attrs.location || attrs
+  const lat = loc.latitude ?? loc.lat
+  const long = loc.longitude ?? loc.lng ?? loc.long
+  if (lat == null || long == null) return null
+  return {
+    latitude: lat,
+    longitude: long,
+    name: loc.name || loc.title || '',
+    address: loc.address || '',
+  }
+}
+
+function mapsUrl(location) {
+  return `https://maps.google.com/?q=${location.latitude},${location.longitude}`
+}
+
+// Chatwoot stores a shared contact card on content_attributes (a `contacts`
+// array or a single `contact`). Flatten to {name, phone} for the card; null
+// falls through to the normal render, so ordinary messages are untouched.
+function contactPayload(message) {
+  const attrs = message?.content_attributes
+  if (!attrs) return null
+  const raw = Array.isArray(attrs.contacts)
+    ? attrs.contacts[0]
+    : attrs.contact || null
+  if (!raw) return null
+  const name =
+    raw.name?.formatted_name || raw.formatted_name || raw.name || ''
+  const phone =
+    raw.phones?.[0]?.phone || raw.phone || raw.phone_number || ''
+  if (!name && !phone) return null
+  return { name: typeof name === 'string' ? name : '', phone }
 }
 
 // The switcher used to label every tab with the contact's name — useless
