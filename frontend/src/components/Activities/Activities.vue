@@ -2,6 +2,7 @@
   <ActivityHeader
     v-model="tabIndex"
     v-model:showWhatsappTemplates="showWhatsappTemplates"
+    v-model:showWhatsappFlows="showWhatsappFlows"
     v-model:showFilesUploader="showFilesUploader"
     v-model:emailBox="emailBox"
     :tabs="tabs"
@@ -507,6 +508,7 @@ import OutboundCallIcon from '@/components/Icons/OutboundCallIcon.vue'
 import FadedScrollableDiv from '@/components/FadedScrollableDiv.vue'
 import CommunicationArea from '@/components/CommunicationArea.vue'
 import WhatsappTemplateSelectorModal from '@/components/Modals/WhatsappTemplateSelectorModal.vue'
+import WhatsappFlowSelectorModal from '@/components/Modals/WhatsappFlowSelectorModal.vue'
 import AllModals from '@/components/Activities/AllModals.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import TimelineTimestamp from '@/components/Activities/TimelineTimestamp.vue'
@@ -668,7 +670,15 @@ const chatwootConversations = createResource({
 
 const chatwootMessages = createResource({
   url: 'crm.api.chatwoot.get_chatwoot_messages',
-  cache: ['chatwoot_messages', props.docname],
+  // Must include conversation_id: a lead/deal can have multiple Chatwoot
+  // conversations, and this resource is refetched in place (fetch()) when
+  // the active conversation changes. Without conversation_id in the cache
+  // key, switching conversations (or the auto-select-first-conversation on
+  // reload) can serve/overwrite the cache with another conversation's
+  // messages under the same slot — messages sent to a since-deselected
+  // conversation then silently vanish from view even though the send
+  // succeeded and the backend has them.
+  cache: ['chatwoot_messages', props.docname, activeChatwootConversationId],
   makeParams: () => ({
     reference_doctype: props.doctype,
     reference_name: props.docname,
