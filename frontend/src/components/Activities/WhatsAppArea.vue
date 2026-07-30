@@ -92,7 +92,76 @@
           />
           <div
             v-else-if="whatsapp.content_type == 'button'"
-            v-html="formatWhatsAppMessage(whatsapp.message)"
+            class="flex items-center gap-1.5"
+          >
+            <span
+              v-if="whatsapp.type == 'Incoming'"
+              class="lucide-corner-up-left size-3.5 shrink-0 text-ink-gray-4"
+              aria-hidden="true"
+            />
+            <span v-if="whatsapp.type == 'Incoming'" class="text-ink-gray-5">
+              {{ __('Replied:') }}
+            </span>
+            <span
+              class="text-sm-medium"
+              v-html="formatWhatsAppMessage(whatsapp.message)"
+            />
+          </div>
+          <div
+            v-else-if="whatsapp.content_type == 'interactive'"
+            class="flex flex-col gap-2"
+          >
+            <div v-html="formatWhatsAppMessage(whatsapp.message)" />
+            <div
+              v-if="interactivePayload(whatsapp)?.type == 'button'"
+              class="flex flex-wrap gap-1.5 border-t border-outline-gray-2 pt-2"
+            >
+              <div
+                v-for="btn in interactivePayload(whatsapp).buttons"
+                :key="btn.id"
+                class="rounded-md border border-outline-gray-2 bg-surface-white px-2.5 py-1 text-sm-medium text-ink-blue-link"
+              >
+                {{ btn.title }}
+              </div>
+            </div>
+            <div
+              v-else-if="interactivePayload(whatsapp)?.type == 'list'"
+              class="flex flex-col gap-2 border-t border-outline-gray-2 pt-2"
+            >
+              <div
+                v-for="(section, sIdx) in interactivePayload(whatsapp).sections"
+                :key="sIdx"
+                class="flex flex-col gap-1"
+              >
+                <div
+                  v-if="section.title"
+                  class="text-2xs font-medium uppercase text-ink-gray-4"
+                >
+                  {{ section.title }}
+                </div>
+                <div
+                  v-for="row in section.rows"
+                  :key="row.id"
+                  class="rounded-md border border-outline-gray-2 bg-surface-white px-2.5 py-1.5"
+                >
+                  <div class="text-sm-medium text-ink-blue-link">
+                    {{ row.title }}
+                  </div>
+                  <div v-if="row.description" class="text-xs text-ink-gray-5">
+                    {{ row.description }}
+                  </div>
+                </div>
+              </div>
+              <div
+                class="mt-0.5 self-start rounded-md border border-outline-gray-2 px-2.5 py-1 text-sm-medium text-ink-blue-link"
+              >
+                {{ interactivePayload(whatsapp).listButtonLabel }}
+              </div>
+            </div>
+          </div>
+          <WhatsAppFlowMessage
+            v-else-if="whatsapp.content_type == 'flow'"
+            :whatsapp="whatsapp"
           />
           <div v-else-if="whatsapp.content_type == 'image'">
             <img
@@ -187,6 +256,7 @@ import CheckIcon from '@/components/Icons/CheckIcon.vue'
 import DoubleCheckIcon from '@/components/Icons/DoubleCheckIcon.vue'
 import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
 import ReactIcon from '@/components/Icons/ReactIcon.vue'
+import WhatsAppFlowMessage from '@/components/Activities/WhatsAppFlowMessage.vue'
 import { formatDate, sanitizeHTML } from '@/utils'
 import { useTelemetry } from 'frappe-ui/frappe'
 import { Tooltip, Dropdown, createResource, toast } from 'frappe-ui'
@@ -199,6 +269,39 @@ defineProps({
 const list = defineModel({ type: Object })
 
 const { capture } = useTelemetry()
+
+// Parses a WhatsApp Message's `buttons` JSON field (set by
+// crm.api.whatsapp.send_whatsapp_interactive) into the shape the template
+// above renders. Cached per-message so repeated renders in the same tick
+// don't re-parse identical JSON.
+const interactivePayloadCache = new WeakMap()
+
+function interactivePayload(whatsapp) {
+  if (!whatsapp?.buttons) return null
+  if (interactivePayloadCache.has(whatsapp)) {
+    return interactivePayloadCache.get(whatsapp)
+  }
+  let parsed = null
+  try {
+    const data =
+      typeof whatsapp.buttons == 'string'
+        ? JSON.parse(whatsapp.buttons)
+        : whatsapp.buttons
+    if (data?.type == 'button') {
+      parsed = { type: 'button', buttons: data.buttons || [] }
+    } else if (data?.type == 'list') {
+      parsed = {
+        type: 'list',
+        listButtonLabel: data.list_button_label || __('Select Option'),
+        sections: data.sections || [],
+      }
+    }
+  } catch (e) {
+    parsed = null
+  }
+  interactivePayloadCache.set(whatsapp, parsed)
+  return parsed
+}
 
 function openFileInAnotherTab(url) {
   window.open(url, '_blank')

@@ -82,6 +82,8 @@ import ProfilePage from '@/components/Settings/Profile/ProfilePage.vue'
 import PreferencesSettings from '@/components/Settings/PreferencesSettings.vue'
 import WhatsAppSettings from '@/components/Settings/WhatsAppSettings.vue'
 import WhatsAppTemplateSettings from '@/components/Settings/WhatsAppTemplateSettings.vue'
+import WhatsAppRecipientListSettings from '@/components/Settings/WhatsAppRecipientListSettings.vue'
+import WhatsAppBulkCampaignSettings from '@/components/Settings/WhatsAppBulkCampaignSettings.vue'
 import ChatwootSettings from '@/components/Settings/ChatwootSettings.vue'
 import ERPNextSettings from '@/components/Settings/ERPNextSettings.vue'
 import LeadSyncSourcePage from '@/components/Settings/LeadSyncing/LeadSyncSourcePage.vue'
@@ -257,6 +259,18 @@ const tabs = computed(() => {
           label: __('WhatsApp Templates'),
           icon: WhatsAppIcon,
           component: markRaw(WhatsAppTemplateSettings),
+          condition: () => isWhatsappInstalled.value && isManager(),
+        },
+        {
+          label: __('WhatsApp Recipient Lists'),
+          icon: WhatsAppIcon,
+          component: markRaw(WhatsAppRecipientListSettings),
+          condition: () => isWhatsappInstalled.value && isManager(),
+        },
+        {
+          label: __('WhatsApp Bulk Campaigns'),
+          icon: WhatsAppIcon,
+          component: markRaw(WhatsAppBulkCampaignSettings),
           condition: () => isWhatsappInstalled.value && isManager(),
         },
         {

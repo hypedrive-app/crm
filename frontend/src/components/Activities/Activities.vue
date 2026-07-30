@@ -3,6 +3,7 @@
     v-model="tabIndex"
     v-model:showWhatsappTemplates="showWhatsappTemplates"
     v-model:showWhatsappFlows="showWhatsappFlows"
+    v-model:showWhatsappInteractive="showWhatsappInteractive"
     v-model:showFilesUploader="showFilesUploader"
     v-model:emailBox="emailBox"
     :tabs="tabs"
@@ -451,6 +452,20 @@
     :doctype="doctype"
     @send="(t) => sendTemplate(t)"
   />
+  <WhatsappFlowSelectorModal
+    v-if="whatsappEnabled"
+    v-model="showWhatsappFlows"
+    :sending="sendFlowResource.loading"
+    :sending-flow="sendingFlowName"
+    :error-message="sendFlowError"
+    @send-flow="(f) => sendFlow(f)"
+  />
+  <WhatsappInteractiveModal
+    v-if="whatsappEnabled"
+    v-model="showWhatsappInteractive"
+    :sending="sendInteractiveResource.loading"
+    @send="(i) => sendInteractive(i)"
+  />
   <AllModals
     ref="modalRef"
     v-model="all_activities"
@@ -509,6 +524,7 @@ import FadedScrollableDiv from '@/components/FadedScrollableDiv.vue'
 import CommunicationArea from '@/components/CommunicationArea.vue'
 import WhatsappTemplateSelectorModal from '@/components/Modals/WhatsappTemplateSelectorModal.vue'
 import WhatsappFlowSelectorModal from '@/components/Modals/WhatsappFlowSelectorModal.vue'
+import WhatsappInteractiveModal from '@/components/Modals/WhatsappInteractiveModal.vue'
 import AllModals from '@/components/Activities/AllModals.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import TimelineTimestamp from '@/components/Activities/TimelineTimestamp.vue'
@@ -581,6 +597,10 @@ const all_activities = createResource({
 })
 
 const showWhatsappTemplates = ref(false)
+const showWhatsappFlows = ref(false)
+const sendingFlowName = ref('')
+const sendFlowError = ref('')
+const showWhatsappInteractive = ref(false)
 
 const whatsappMessages = createResource({
   url: 'crm.api.whatsapp.get_whatsapp_messages',
@@ -831,6 +851,62 @@ function sendTemplate({ template, bodyParameters, headerParameters }) {
       showWhatsappTemplates.value = false
       whatsappMessages.reload()
     },
+  })
+}
+
+const sendFlowResource = createResource({
+  url: 'crm.api.whatsapp.send_whatsapp_flow',
+  onError: (error) => {
+    sendFlowError.value = error.messages?.[0] || __('Failed to send WhatsApp Flow')
+  },
+  // Only dismiss the dialog once the send is confirmed to have gone
+  // through, mirroring sendTemplate above.
+  onSuccess: () => {
+    sendingFlowName.value = ''
+    showWhatsappFlows.value = false
+    whatsappMessages.reload()
+  },
+})
+
+function sendFlow(flow) {
+  capture('send_whatsapp_flow', { doctype: props.doctype })
+  sendFlowError.value = ''
+  sendingFlowName.value = flow.name
+  sendFlowResource.submit({
+    reference_doctype: props.doctype,
+    reference_name: props.docname,
+    to: doc.value.mobile_no,
+    flow: flow.name,
+  })
+}
+
+const sendInteractiveResource = createResource({
+  url: 'crm.api.whatsapp.send_whatsapp_interactive',
+  onError: (error) => {
+    toast.error(
+      error.messages?.[0] || __('Failed to send WhatsApp interactive message'),
+    )
+  },
+  // Only dismiss the dialog once the send is confirmed to have gone
+  // through, mirroring sendTemplate/sendFlow above.
+  onSuccess: () => {
+    showWhatsappInteractive.value = false
+    whatsappMessages.reload()
+  },
+})
+
+function sendInteractive({ interactiveType, message, buttons, listButtonLabel, sections }) {
+  capture('send_whatsapp_interactive', { doctype: props.doctype })
+  sendInteractiveResource.submit({
+    reference_doctype: props.doctype,
+    reference_name: props.docname,
+    to: doc.value.mobile_no,
+    message,
+    interactive_type: interactiveType,
+    buttons: buttons || [],
+    list_button_label: listButtonLabel || '',
+    sections: sections || [],
+    reply_to: replyMessage.value?.name || '',
   })
 }
 

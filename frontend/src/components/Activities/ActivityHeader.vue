@@ -64,6 +64,14 @@
         @click="showWhatsappTemplates = true"
       />
       <Button
+        :label="__('Send Flow')"
+        @click="showWhatsappFlows = true"
+      />
+      <Button
+        :label="__('Send Interactive')"
+        @click="showWhatsappInteractive = true"
+      />
+      <Button
         variant="solid"
         :label="__('New Message')"
         iconLeft="plus"
@@ -119,6 +127,12 @@ const { makeCall } = globalStore()
 
 const tabIndex = defineModel({ type: Number })
 const showWhatsappTemplates = defineModel('showWhatsappTemplates', {
+  type: Boolean,
+})
+const showWhatsappFlows = defineModel('showWhatsappFlows', {
+  type: Boolean,
+})
+const showWhatsappInteractive = defineModel('showWhatsappInteractive', {
   type: Boolean,
 })
 const showFilesUploader = defineModel('showFilesUploader', { type: Boolean })
