@@ -1,6 +1,30 @@
 <!-- eslint-disable vue/no-v-html -->
 <template>
   <div>
+    <!-- No conversation resolved for this record. Chatwoot conversations are
+         looked up live by the contact's phone/email, so a record whose contact
+         has never messaged us simply has none — every control below keys off
+         `activeConversationId`, so without this the tab rendered completely
+         blank with no explanation of why. -->
+    <div
+      v-if="!activeConversationId"
+      class="flex flex-col items-center gap-1 px-3 py-10 text-center sm:px-10"
+    >
+      <span
+        class="lucide-message-square-dashed size-6 text-ink-gray-4"
+        aria-hidden="true"
+      />
+      <div class="text-p-base text-ink-gray-7">
+        {{ __('No Chatwoot conversation for this contact') }}
+      </div>
+      <div class="max-w-sm text-p-sm text-ink-gray-5">
+        {{
+          __(
+            'Conversations are matched live by the phone number or email on this record. One will appear here as soon as this contact messages you.',
+          )
+        }}
+      </div>
+    </div>
     <div
       v-if="activeConversationId"
       class="mb-3 flex items-center gap-2 overflow-x-auto px-3 sm:px-10"
@@ -31,21 +55,35 @@
         <div class="h-5 w-px shrink-0 bg-outline-gray-2" />
       </template>
       <div class="flex shrink-0 items-center gap-2">
-        <Button
-          size="sm"
-          variant="subtle"
-          :loading="toggling"
-          @click="$emit('toggleStatus', isResolved ? 'open' : 'resolved')"
+        <!-- Reopening changes Chatwoot's own status only. It does NOT restore
+             the WhatsApp reply window — that 24h limit is enforced by Meta off
+             the customer's last inbound message, so a reopened conversation can
+             still be reply-locked (verified live: status 'open' with
+             can_reply false). The tooltip says so, because the bare "Reopen"
+             label otherwise implies you can now type a free-form reply. -->
+        <Tooltip
+          :text="
+            isResolved
+              ? __('Reopen in Chatwoot. If the 24h WhatsApp window has passed, you will still need a template to message first.')
+              : __('Mark this conversation resolved in Chatwoot')
+          "
         >
-          <template #prefix>
-            <span
-              :class="isResolved ? 'lucide-rotate-ccw' : 'lucide-check-circle'"
-              class="size-3.5"
-              aria-hidden="true"
-            />
-          </template>
-          {{ isResolved ? __('Reopen') : __('Resolve') }}
-        </Button>
+          <Button
+            size="sm"
+            variant="subtle"
+            :loading="toggling"
+            @click="$emit('toggleStatus', isResolved ? 'open' : 'resolved')"
+          >
+            <template #prefix>
+              <span
+                :class="isResolved ? 'lucide-rotate-ccw' : 'lucide-check-circle'"
+                class="size-3.5"
+                aria-hidden="true"
+              />
+            </template>
+            {{ isResolved ? __('Reopen') : __('Resolve') }}
+          </Button>
+        </Tooltip>
         <Tooltip :text="__('Search in this conversation')">
           <Button
             size="sm"

@@ -1,26 +1,35 @@
 <template>
   <div
     v-if="conversationId && !canReply"
-    class="flex items-center gap-2 px-3 py-2.5 sm:px-10 text-p-sm text-ink-gray-5"
+    class="flex flex-col gap-2 px-3 py-2.5 sm:px-10 text-p-sm text-ink-gray-5"
   >
-    <span
-      class="lucide-clock size-4 shrink-0 text-ink-gray-4"
-      aria-hidden="true"
-    />
-    <span class="flex-1">
-      {{
-        __(
-          "This conversation is outside the reply window (common on WhatsApp after 24 hours of inactivity). The customer needs to message first, or send a template message to reopen it.",
-        )
-      }}
-    </span>
-    <Button
-      variant="solid"
-      class="shrink-0"
-      @click="showTemplates = true"
-    >
-      {{ __('Send Template') }}
-    </Button>
+    <div class="flex items-start gap-2 sm:items-center">
+      <span
+        class="lucide-clock mt-0.5 size-4 shrink-0 text-ink-gray-4 sm:mt-0"
+        aria-hidden="true"
+      />
+      <span class="flex-1">
+        {{
+          __(
+            "This conversation is outside the reply window (common on WhatsApp after 24 hours of inactivity). The customer needs to message first, or send a template message to reopen it.",
+          )
+        }}
+      </span>
+    </div>
+    <!-- Both actions stay reachable here. Previously this branch offered only
+         "Send Template", so Canned Responses became unreachable the moment a
+         conversation fell outside the reply window — even though a canned
+         response is just text that can be pasted into a template's parameters,
+         and agents rely on that copy. Buttons wrap on mobile rather than
+         squeezing the message text. -->
+    <div class="flex flex-wrap items-center gap-2 self-end">
+      <Button variant="subtle" @click="showCannedResponses = true">
+        {{ __('Canned Responses') }}
+      </Button>
+      <Button variant="solid" @click="showTemplates = true">
+        {{ __('Send Template') }}
+      </Button>
+    </div>
   </div>
   <div v-else class="flex items-end gap-2 px-3 py-2.5 sm:px-10" v-bind="$attrs">
     <div class="flex h-8 shrink-0 items-center gap-2">
