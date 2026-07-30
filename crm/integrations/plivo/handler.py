@@ -137,7 +137,18 @@ def handle_answer(**kwargs):
 			)
 
 		if frappe.db.get_single_value("CRM Plivo Settings", "record_call"):
-			start_recording(call_uuid)
+			# Enqueue rather than call inline: start_recording does a blocking
+			# HTTP POST to Plivo (up to 10s), and running it here delayed the
+			# answer webhook's response — which is exactly the <Dial> XML that
+			# bridges the second leg. Deferring it both keeps the response fast
+			# AND lets the Record/ request land after the dial is under way
+			# (recording the whole live CallUUID, not the pre-bridge dead air).
+			frappe.enqueue(
+				start_recording,
+				queue="short",
+				call_uuid=call_uuid,
+				enqueue_after_commit=True,
+			)
 
 		if not dial_target:
 			# Neither a recognized server-initiated call (has dial_to) nor a
@@ -260,7 +271,22 @@ def fetch_recording_url(call_uuid: str, max_attempts: int = 6, delay_seconds: in
 			)
 			response.raise_for_status()
 			recordings = response.json().get("objects") or []
+		except requests.exceptions.HTTPError as error:
+			# 401/403 = bad credentials, 4xx/5xx = Plivo-side problem. These are
+			# NOT "recording not ready yet" — retrying for the full window would
+			# always end in a misleading "recording never appeared" even though
+			# the call may well have been recorded. Distinguish and stop early
+			# on an auth failure, which will never resolve by waiting.
+			http_status = getattr(error.response, "status_code", None)
+			if http_status in (401, 403):
+				frappe.log_error(
+					title="Plivo recording fetch: authentication failed",
+					message=f"call_uuid={call_uuid}, HTTP {http_status} — check Plivo Auth ID/Token.",
+				)
+				return
+			recordings = []
 		except requests.exceptions.RequestException:
+			# Network blip / timeout — genuinely transient, keep polling.
 			recordings = []
 
 		if recordings:
@@ -442,6 +468,14 @@ def make_a_call(to_number: str, from_number: str | None = None, caller_id: str |
 	except requests.exceptions.HTTPError:
 		error = response.json().get("error") or response.text
 		frappe.throw(str(error), title=_("Plivo Exception"))
+	except requests.exceptions.RequestException as error:
+		# Connection/timeout to Plivo's API — never reached the HTTPError branch
+		# above (no response object), so without this it propagated as a raw
+		# 500 traceback to the agent instead of a clean message.
+		frappe.throw(
+			_("Could not reach Plivo to place the call: {0}").format(str(error)),
+			title=_("Plivo Unreachable"),
+		)
 	else:
 		res = response.json()
 
@@ -625,37 +659,89 @@ def get_call_log(call_payload):
 
 
 def get_call_log_status(call_payload):
-	status = call_payload.get("CallStatus")
+	# Maps Plivo's CallStatus (and the hangup-callback HangupCause values Plivo
+	# also sends on the hangup_url) onto CRM Call Log's own status vocabulary.
+	#
+	# `busy` is a TERMINAL hangup event, not an intermediate ring — Plivo fires
+	# it on the hangup_url when the callee is busy or rejects. Mapping it to
+	# "Ringing" (as this did) wrote the log to a non-terminal status at the exact
+	# moment the call ended, and since no further webhook ever arrives for that
+	# CallUUID the log was stranded at "Ringing" forever. CRM Call Log has a
+	# dedicated "Busy" status; use it.
+	status = (call_payload.get("CallStatus") or "").lower()
 	mapping = {
+		# In-progress lifecycle
+		"queued": "Queued",
 		"ringing": "Ringing",
 		"in-progress": "In Progress",
+		# Terminal
 		"completed": "Completed",
-		"busy": "Ringing",
+		"busy": "Busy",
 		"no-answer": "No Answer",
 		"failed": "Failed",
 		"canceled": "Canceled",
+		"cancelled": "Canceled",  # Plivo has used both spellings historically
+		"rejected": "Failed",
 		"timeout": "No Answer",
+		"early media": "Ringing",
 	}
-	return mapping.get(status, "Completed")
+	# Unknown/undocumented status must NOT silently become "Completed" — a
+	# call whose outcome we can't classify is not a success. Default to
+	# "Failed" and record the raw value so it can be investigated.
+	resolved = mapping.get(status)
+	if resolved is None:
+		frappe.log_error(
+			title="Plivo: unrecognized CallStatus",
+			message=f"CallStatus={call_payload.get('CallStatus')!r} payload={frappe.as_json(call_payload)}",
+		)
+		return "Failed"
+	return resolved
+
+
+TERMINAL_CALL_STATUSES = {"Completed", "Failed", "Busy", "No Answer", "Canceled"}
 
 
 def update_call_log(call_payload, status=None, call_log=None):
 	call_log = call_log or get_call_log(call_payload)
 	status = status or get_call_log_status(call_payload)
+	if not call_log:
+		return
+
+	# Guard against a late intermediate webhook (a delayed "ringing") arriving
+	# AFTER a terminal one and dragging a finished call back to a non-terminal
+	# status. Once a call is Completed/Failed/Busy/etc. it stays there.
+	if call_log.status in TERMINAL_CALL_STATUSES and status not in TERMINAL_CALL_STATUSES:
+		return call_log
+
+	call_log.status = status
+	call_log.start_time = call_payload.get("StartTime") or call_log.start_time
+	call_log.end_time = call_payload.get("EndTime")
+
+	if call_log.start_time and call_log.end_time:
+		call_log.duration = frappe.utils.time_diff_in_seconds(
+			call_log.end_time, call_log.start_time
+		)
+
 	try:
-		if call_log:
-			call_log.status = status
-			call_log.start_time = call_payload.get("StartTime") or call_log.start_time
-			call_log.end_time = call_payload.get("EndTime")
-
-			if call_log.start_time and call_log.end_time:
-				call_log.duration = frappe.utils.time_diff_in_seconds(
-					call_log.end_time, call_log.start_time
-				)
-
-			call_log.save(ignore_permissions=True)
-			frappe.db.commit()
-			return call_log
-	except Exception:
-		frappe.log_error(title="Error while updating Plivo call record")
+		call_log.save(ignore_permissions=True)
 		frappe.db.commit()
+		return call_log
+	except Exception:
+		# The hangup webhook is Plivo's ONLY terminal callback and it is not
+		# retried on our failure — a transient save error (DB lock under
+		# concurrent calls) that we swallowed here used to strand the log at
+		# its previous, non-terminal status forever. For a terminal status,
+		# fall back to a minimal targeted write of just the status field so the
+		# call at least reaches a correct terminal state even if the full
+		# document save (with its validations/hooks) couldn't commit.
+		frappe.db.rollback()
+		if status in TERMINAL_CALL_STATUSES:
+			try:
+				frappe.db.set_value(
+					"CRM Call Log", call_log.name, "status", status, update_modified=False
+				)
+				frappe.db.commit()
+				return frappe.get_doc("CRM Call Log", call_log.name)
+			except Exception:
+				frappe.db.rollback()
+		frappe.log_error(title="Error while updating Plivo call record")

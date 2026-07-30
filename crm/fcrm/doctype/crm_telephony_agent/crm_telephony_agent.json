@@ -107,6 +107,7 @@
   },
   {
    "default": "Computer",
+   "description": "Where incoming calls ring for Twilio and Exotel. For Plivo this is ignored — the agent chooses Browser or Phone per call from the dialer.",
    "fieldname": "call_receiving_device",
    "fieldtype": "Select",
    "label": "Device",
