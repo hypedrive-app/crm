@@ -3,86 +3,81 @@
   <div>
     <div
       v-if="activeConversationId"
-      class="mx-3 mb-3 rounded-lg border bg-surface-gray-1 sm:mx-10"
+      class="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 sm:px-10"
     >
       <div
         v-if="conversations.length > 1"
-        class="flex flex-wrap gap-1 border-b p-1.5"
+        class="flex flex-wrap items-center gap-2"
       >
-        <button
+        <Button
           v-for="conv in conversations"
           :key="conv.id"
-          type="button"
-          class="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-p-sm transition-colors"
-          :class="
-            conv.id === activeConversationId
-              ? 'bg-surface-white text-ink-gray-9 text-sm-medium shadow-sm'
-              : 'text-ink-gray-5 hover:bg-surface-white/60 hover:text-ink-gray-7'
-          "
+          size="sm"
+          :variant="conv.id === activeConversationId ? 'solid' : 'subtle'"
           @click="$emit('selectConversation', conv.id)"
         >
-          <span
-            class="size-1.5 shrink-0 rounded-full"
-            :class="conv.status === 'resolved' ? 'bg-ink-gray-4' : 'bg-ink-green-3'"
-          />
+          <template #prefix>
+            <span
+              class="size-1.5 shrink-0 rounded-full"
+              :class="conv.status === 'resolved' ? 'bg-ink-gray-4' : 'bg-ink-green-3'"
+            />
+          </template>
           {{ conversationLabel(conv) }}
           <span
             v-if="conv.unread_count"
-            class="rounded-full bg-surface-red-2 px-1.5 text-2xs text-ink-red-4"
+            class="ml-1 rounded-full bg-surface-red-2 px-1.5 text-2xs text-ink-red-4"
           >
             {{ conv.unread_count }}
           </span>
-        </button>
+        </Button>
       </div>
-      <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 p-2 pl-3">
-        <div
-          v-if="assignee?.name"
-          class="flex items-center gap-1.5 text-p-sm text-ink-gray-7"
+      <div
+        v-if="assignee?.name"
+        class="flex items-center gap-1.5 text-p-sm text-ink-gray-7"
+      >
+        <Avatar :image="assignee.avatar" :label="assignee.name" size="sm" />
+        <span>{{ __('Assigned to {0}', [assignee.name]) }}</span>
+      </div>
+      <div v-else class="text-p-sm text-ink-gray-5">
+        {{ isResolved ? __('This conversation is resolved') : __('Unassigned conversation') }}
+      </div>
+      <div class="flex shrink-0 items-center gap-2">
+        <Button
+          size="sm"
+          variant="subtle"
+          :loading="toggling"
+          @click="$emit('toggleStatus', isResolved ? 'open' : 'resolved')"
         >
-          <Avatar :image="assignee.avatar" :label="assignee.name" size="sm" />
-          <span>{{ __('Assigned to {0}', [assignee.name]) }}</span>
-        </div>
-        <div v-else class="text-p-sm text-ink-gray-5">
-          {{ isResolved ? __('This conversation is resolved') : __('Unassigned conversation') }}
-        </div>
-        <div class="flex shrink-0 items-center gap-1.5">
+          <template #prefix>
+            <span
+              :class="isResolved ? 'lucide-rotate-ccw' : 'lucide-check-circle'"
+              class="size-3.5"
+              aria-hidden="true"
+            />
+          </template>
+          {{ isResolved ? __('Reopen') : __('Resolve') }}
+        </Button>
+        <Tooltip :text="__('Search in this conversation')">
           <Button
             size="sm"
-            variant="subtle"
-            :loading="toggling"
-            @click="$emit('toggleStatus', isResolved ? 'open' : 'resolved')"
+            :variant="showSearch ? 'solid' : 'subtle'"
+            @click="toggleSearch"
           >
-            <template #prefix>
-              <span
-                :class="isResolved ? 'lucide-rotate-ccw' : 'lucide-check-circle'"
-                class="size-3.5"
-                aria-hidden="true"
-              />
-            </template>
-            {{ isResolved ? __('Reopen') : __('Resolve') }}
+            <span class="lucide-search size-3.5" aria-hidden="true" />
           </Button>
-          <div class="h-4 w-px bg-outline-gray-2" />
-          <Tooltip :text="__('Search in this conversation')">
-            <Button
-              size="sm"
-              variant="ghost"
-              :class="showSearch ? 'bg-surface-gray-3' : ''"
-              @click="toggleSearch"
-            >
-              <span class="lucide-search size-3.5" aria-hidden="true" />
-            </Button>
-          </Tooltip>
-          <Tooltip v-if="chatwootUrl" :text="__('Open in Chatwoot')">
+        </Tooltip>
+        <Tooltip v-if="chatwootUrl" :text="__('Open in Chatwoot')">
+          <Button size="sm" variant="subtle">
             <a
               :href="chatwootUrl"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex size-7 items-center justify-center rounded text-ink-gray-5 hover:bg-surface-white hover:text-ink-gray-8"
+              class="flex items-center"
             >
               <span class="lucide-external-link size-3.5" aria-hidden="true" />
             </a>
-          </Tooltip>
-        </div>
+          </Button>
+        </Tooltip>
       </div>
     </div>
     <div v-if="showSearch" class="mb-3 px-3 sm:px-10">
