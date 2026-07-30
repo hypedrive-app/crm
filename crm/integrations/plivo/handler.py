@@ -360,13 +360,27 @@ def _provision_endpoint(agent, settings):
 	base_username = base_username[:20]
 	password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(20))
 
+	# Plivo restricts the alias to "Letters, Numbers, . + @ - _" — it rejects a
+	# space (and anything else outside that set) with a 400. `user_name` is a
+	# free-text display name that very often contains a space ("Shivam Gupta"),
+	# so it can't be sent raw the way it was, or every such agent's browser
+	# calling fails to provision. Sanitize to the allowed set, collapsing
+	# spaces to underscores, and fall back to the (already-safe) derived
+	# username if nothing usable remains.
+	raw_alias = agent.user_name or agent.user
+	alias = "".join(
+		ch if (ch.isalnum() or ch in ".+@-_") else ("_" if ch == " " else "")
+		for ch in raw_alias
+	)
+	alias = (alias.strip("_") or base_username)[:64]
+
 	response = requests.post(
 		f"https://api.plivo.com/v1/Account/{settings.auth_id}/Endpoint/",
 		auth=(settings.auth_id, settings.get_password("auth_token")),
 		json={
 			"username": base_username,
 			"password": password,
-			"alias": agent.user_name or agent.user,
+			"alias": alias,
 			"app_id": settings.application_id,
 		},
 	)
