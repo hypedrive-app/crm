@@ -143,6 +143,16 @@ function useCannedResponse(text) {
 
 function sendTextMessage() {
   if (!props.conversationId || !content.value.trim()) return
+  // Belt-and-braces: the composer is normally swapped out when `canReply` is
+  // false, but Enter can still fire from a stale render, and a free-form send in
+  // that state is guaranteed to be rejected by Meta. Fail loudly and keep the
+  // text rather than posting a message that silently ends up `failed`.
+  if (!props.canReply) {
+    toast.error(
+      __('Outside the 24h reply window — send a template message instead.'),
+    )
+    return
+  }
   sendChatwootMessage()
   textareaRef.value?.el?.blur()
 }
@@ -159,9 +169,22 @@ function sendChatwootMessage() {
       content: messageContent,
     },
     auto: true,
-    onSuccess: () => {
+    onSuccess: (data) => {
       capture('chatwoot_send_message')
       chatwoot.value?.reload?.()
+      // A 200 here only means Chatwoot ACCEPTED the message, not that WhatsApp
+      // delivered it. Meta rejects out-of-window sends asynchronously, so the
+      // message lands in the thread and then flips to status 'failed' a moment
+      // later — verified live on a reply-locked conversation. Without this the
+      // agent believes a message went out that never will.
+      if (String(data?.status || '').toLowerCase() === 'failed') {
+        content.value = messageContent
+        toast.error(
+          __(
+            'WhatsApp rejected this message — the 24h reply window has closed. Send a template instead.',
+          ),
+        )
+      }
     },
     onError: (error) => {
       content.value = messageContent
