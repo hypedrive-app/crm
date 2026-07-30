@@ -385,6 +385,100 @@ def react_on_whatsapp_message(emoji: str, reply_to_name: str):
 	return doc.name
 
 
+@frappe.whitelist()
+def mark_whatsapp_messages_read(reference_doctype: str, reference_name: str):
+	"""Send WhatsApp read receipts for unread inbound messages on a Lead/Deal.
+
+	Mirrors get_whatsapp_messages' CRM Deal -> linked Lead fan-out, since a
+	deal's WhatsApp thread is really the lead's thread carried forward.
+	Silently skips accounts/messages that fail (e.g. already read upstream,
+	network hiccup) — send_read_receipt itself logs and swallows API errors,
+	so a partial failure here shouldn't block the rest of the batch.
+	"""
+	reference_doc = validate_access(reference_doctype, reference_name)
+	if not frappe.db.exists("DocType", "WhatsApp Message"):
+		return []
+
+	reference_pairs = [(reference_doctype, reference_name)]
+	if reference_doctype == "CRM Deal":
+		lead = reference_doc.get("lead")
+		if lead:
+			validate_access("CRM Lead", lead)
+			reference_pairs.append(("CRM Lead", lead))
+
+	marked = []
+	for ref_doctype, ref_name in reference_pairs:
+		unread_names = frappe.get_all(
+			"WhatsApp Message",
+			filters={
+				"reference_doctype": ref_doctype,
+				"reference_name": ref_name,
+				"type": "Incoming",
+				"status": ["!=", "marked as read"],
+			},
+			pluck="name",
+		)
+		for name in unread_names:
+			doc = frappe.get_doc("WhatsApp Message", name)
+			if not doc.message_id:
+				continue
+			if doc.send_read_receipt():
+				marked.append(name)
+
+	return marked
+
+
+@frappe.whitelist()
+def get_whatsapp_templates():
+	"""List all synced WhatsApp templates for the management settings page."""
+	validate_access()
+	if not frappe.db.exists("DocType", "WhatsApp Templates"):
+		return []
+
+	return frappe.get_all(
+		"WhatsApp Templates",
+		fields=[
+			"name",
+			"template_name",
+			"actual_name",
+			"category",
+			"language",
+			"language_code",
+			"status",
+			"template",
+			"header",
+			"header_type",
+			"footer",
+			"sample_values",
+			"whatsapp_account",
+			"modified",
+		],
+		order_by="modified desc",
+	)
+
+
+@frappe.whitelist()
+def sync_whatsapp_templates():
+	"""Pull the latest template definitions and approval statuses from Meta.
+
+	Delegates to frappe_whatsapp's own WhatsApp Templates.fetch(), which
+	upserts local WhatsApp Templates docs for every active WhatsApp Account.
+	Requires Sales Manager (not just Sales User) since this triggers an
+	outbound call against every configured Meta WhatsApp Business Account.
+	"""
+	if not any(role in ["System Manager", "Sales Manager"] for role in frappe.get_roles()):
+		frappe.throw(_("Only sales managers can sync WhatsApp templates."), frappe.PermissionError)
+
+	if "frappe_whatsapp" not in frappe.get_installed_apps():
+		frappe.throw(_("The frappe_whatsapp app is not installed."))
+
+	from frappe_whatsapp.frappe_whatsapp.doctype.whatsapp_templates.whatsapp_templates import (
+		fetch as fetch_templates_from_meta,
+	)
+
+	return fetch_templates_from_meta()
+
+
 def parse_template_parameters(string, parameters):
 	for i, parameter in enumerate(parameters, start=1):
 		placeholder = "{{" + str(i) + "}}"

@@ -159,6 +159,54 @@ def get_chatwoot_canned_responses():
 	return get_canned_responses()
 
 
+@frappe.whitelist()
+def get_chatwoot_templates():
+	"""Meta-approved WhatsApp templates, sourced live from Chatwoot's own
+	inbox endpoint (already synced from Meta by Chatwoot — no separate Meta
+	Graph call needed). Account/inbox-level list, same no-reference-doc-binding
+	posture as get_chatwoot_canned_responses above."""
+	validate_access()
+	if not frappe.db.exists("DocType", "Chatwoot Settings"):
+		return []
+
+	from frappe_chatwoot.frappe_chatwoot.api.chatwoot import get_templates
+
+	return get_templates()
+
+
+@frappe.whitelist()
+def send_chatwoot_template(
+	reference_doctype: str,
+	reference_name: str,
+	conversation_id: int,
+	template_name: str,
+	category: str,
+	language: str,
+	processed_params: dict | str | None = None,
+):
+	"""Send a WhatsApp template message via Chatwoot's native template_params
+	API. This is the ONE path that works outside the 24h reply window — the
+	whole reason templates exist — so this endpoint must never be gated
+	behind can_reply/conversation-open checks the way send_chatwoot_message
+	effectively is on the frontend. Same ownership-validation pattern as
+	send_chatwoot_message: the caller must prove the conversation belongs to
+	a reference doc it has permission on before this proxies through."""
+	if not frappe.db.exists("DocType", "Chatwoot Settings"):
+		frappe.throw(_("Chatwoot integration is not installed."))
+
+	_validate_conversation_ownership(reference_doctype, reference_name, conversation_id)
+
+	from frappe_chatwoot.frappe_chatwoot.api.chatwoot import send_template
+
+	return send_template(
+		conversation_id=conversation_id,
+		template_name=template_name,
+		category=category,
+		language=language,
+		processed_params=processed_params,
+	)
+
+
 def add_roles():
 	"""Registered in crm/hooks.py's after_migrate, mirroring
 	crm.api.whatsapp.add_roles exactly: grant CRM's own sales roles explicit

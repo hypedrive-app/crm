@@ -600,6 +600,41 @@ watch(
   { immediate: true },
 )
 
+// Mark unread inbound WhatsApp messages as read once the tab is actually
+// being viewed — matching how WhatsApp/Telegram themselves mark read on
+// open rather than requiring an explicit action. Guarded by a name set so
+// re-renders/polling ticks for messages we've already sent a receipt for
+// don't re-fire the API; new inbound messages arriving while the tab stays
+// open (realtime reload above) still get picked up since they add new
+// names to the unread list.
+const markedWhatsappReadNames = new Set()
+
+function markWhatsappMessagesReadIfNeeded() {
+  if (title.value !== 'WhatsApp') return
+  const unread = (whatsappMessages.data || []).filter(
+    (message) =>
+      message.type == 'Incoming' &&
+      message.status != 'marked as read' &&
+      !markedWhatsappReadNames.has(message.name),
+  )
+  if (!unread.length) return
+  unread.forEach((message) => markedWhatsappReadNames.add(message.name))
+  createResource({
+    url: 'crm.api.whatsapp.mark_whatsapp_messages_read',
+    params: {
+      reference_doctype: props.doctype,
+      reference_name: props.docname,
+    },
+    auto: true,
+  })
+}
+
+watch(
+  [title, () => whatsappMessages.data],
+  () => nextTick(markWhatsappMessagesReadIfNeeded),
+  { immediate: true },
+)
+
 const activeChatwootConversationId = ref(null)
 
 // Chatwoot itself reports whether a conversation currently accepts new agent

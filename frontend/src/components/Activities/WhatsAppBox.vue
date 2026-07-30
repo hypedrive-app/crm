@@ -172,6 +172,14 @@ function uploadOptions(openFileSelector) {
         openFileSelector('video/*')
       },
     },
+    {
+      label: __('Upload Audio'),
+      icon: 'mic',
+      onClick: () => {
+        fileType.value = 'audio'
+        openFileSelector('audio/*')
+      },
+    },
   ]
 }
 

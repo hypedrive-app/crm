@@ -7,11 +7,20 @@
       class="lucide-clock size-4 shrink-0 text-ink-gray-4"
       aria-hidden="true"
     />
-    {{
-      __(
-        "This conversation is outside the reply window (common on WhatsApp after 24 hours of inactivity). The customer needs to message first, or send a template message to reopen it.",
-      )
-    }}
+    <span class="flex-1">
+      {{
+        __(
+          "This conversation is outside the reply window (common on WhatsApp after 24 hours of inactivity). The customer needs to message first, or send a template message to reopen it.",
+        )
+      }}
+    </span>
+    <Button
+      variant="solid"
+      class="shrink-0"
+      @click="showTemplates = true"
+    >
+      {{ __('Send Template') }}
+    </Button>
   </div>
   <div v-else class="flex items-end gap-2 px-3 py-2.5 sm:px-10" v-bind="$attrs">
     <div class="flex h-8 shrink-0 items-center gap-2">
@@ -20,6 +29,14 @@
           class="size-4.5 cursor-pointer text-ink-gray-5 hover:text-ink-gray-7"
           :class="{ 'pointer-events-none opacity-40': !conversationId }"
           @click="showCannedResponses = true"
+        />
+      </Tooltip>
+      <Tooltip :text="__('Send Template')">
+        <span
+          class="lucide-file-text size-4.5 cursor-pointer text-ink-gray-5 hover:text-ink-gray-7"
+          :class="{ 'pointer-events-none opacity-40': !conversationId }"
+          aria-hidden="true"
+          @click="showTemplates = true"
         />
       </Tooltip>
     </div>
@@ -50,11 +67,17 @@
     v-model="showCannedResponses"
     @send="useCannedResponse"
   />
+  <ChatwootTemplateSelectorModal
+    ref="templateModalRef"
+    v-model="showTemplates"
+    @send="sendTemplateMessage"
+  />
 </template>
 
 <script setup>
 import ChatwootIcon from '@/components/Icons/ChatwootIcon.vue'
 import ChatwootCannedResponseModal from '@/components/Modals/ChatwootCannedResponseModal.vue'
+import ChatwootTemplateSelectorModal from '@/components/Modals/ChatwootTemplateSelectorModal.vue'
 import { useTelemetry } from 'frappe-ui/frappe'
 import { Textarea, Button, Tooltip, createResource, toast } from 'frappe-ui'
 import { ref, nextTick } from 'vue'
@@ -75,6 +98,8 @@ const textareaRef = ref(null)
 const content = ref('')
 const placeholder = ref(__('Type your message here...'))
 const showCannedResponses = ref(false)
+const showTemplates = ref(false)
+const templateModalRef = ref(null)
 
 // IME composition guard: while an IME (Hindi/Japanese/Chinese input, or an
 // emoji-picker candidate list) is composing, the Enter keystroke that
@@ -132,6 +157,41 @@ function sendChatwootMessage() {
     onError: (error) => {
       content.value = messageContent
       toast.error(error.messages?.[0] || __('Failed to send message'))
+    },
+  })
+}
+
+function sendTemplateMessage({ templateName, category, language, processedParams }) {
+  if (!props.conversationId) return
+  templateModalRef.value?.setSending(true)
+  createResource({
+    url: 'crm.api.chatwoot.send_chatwoot_template',
+    params: {
+      reference_doctype: props.doctype,
+      reference_name: props.docname,
+      conversation_id: props.conversationId,
+      template_name: templateName,
+      category,
+      language,
+      processed_params: processedParams,
+    },
+    auto: true,
+    onError: (error) => {
+      templateModalRef.value?.setSending(false)
+      // Only dismiss the dialog once the send is confirmed to have gone
+      // through — closing unconditionally hides genuine failures (e.g.
+      // Chatwoot/Meta rejecting the template) behind a dialog that appeared
+      // to close as if the send had succeeded.
+      templateModalRef.value?.setError(
+        error.messages?.[0] || __('Failed to send template message'),
+      )
+      toast.error(error.messages?.[0] || __('Failed to send template message'))
+    },
+    onSuccess: () => {
+      capture('chatwoot_send_template')
+      templateModalRef.value?.setSending(false)
+      templateModalRef.value?.closeAfterSuccess()
+      chatwoot.value?.reload?.()
     },
   })
 }
