@@ -4,6 +4,8 @@
     v-model:showWhatsappTemplates="showWhatsappTemplates"
     v-model:showWhatsappFlows="showWhatsappFlows"
     v-model:showWhatsappInteractive="showWhatsappInteractive"
+    v-model:showWhatsappLocation="showWhatsappLocation"
+    v-model:showWhatsappContact="showWhatsappContact"
     v-model:showFilesUploader="showFilesUploader"
     v-model:emailBox="emailBox"
     :tabs="tabs"
@@ -56,7 +58,12 @@
           :messages="chatwootMessages.data?.messages || []"
           :conversations="chatwootConversations.data || []"
           :active-conversation-id="activeChatwootConversationId"
+          :status="activeChatwootStatus"
+          :toggling="chatwootToggleResource.loading"
+          :assignee="chatwootMessages.data?.assignee"
+          :chatwoot-url="chatwootMessages.data?.chatwoot_url"
           @select-conversation="selectChatwootConversation"
+          @toggle-status="toggleChatwootStatus"
         />
       </div>
       <div
@@ -466,6 +473,18 @@
     :sending="sendInteractiveResource.loading"
     @send="(i) => sendInteractive(i)"
   />
+  <WhatsappLocationModal
+    v-if="whatsappEnabled"
+    v-model="showWhatsappLocation"
+    :sending="sendLocationResource.loading"
+    @send="(l) => sendLocation(l)"
+  />
+  <WhatsappContactModal
+    v-if="whatsappEnabled"
+    v-model="showWhatsappContact"
+    :sending="sendContactResource.loading"
+    @send="(c) => sendContact(c)"
+  />
   <AllModals
     ref="modalRef"
     v-model="all_activities"
@@ -525,6 +544,8 @@ import CommunicationArea from '@/components/CommunicationArea.vue'
 import WhatsappTemplateSelectorModal from '@/components/Modals/WhatsappTemplateSelectorModal.vue'
 import WhatsappFlowSelectorModal from '@/components/Modals/WhatsappFlowSelectorModal.vue'
 import WhatsappInteractiveModal from '@/components/Modals/WhatsappInteractiveModal.vue'
+import WhatsappLocationModal from '@/components/Modals/WhatsappLocationModal.vue'
+import WhatsappContactModal from '@/components/Modals/WhatsappContactModal.vue'
 import AllModals from '@/components/Activities/AllModals.vue'
 import FilesUploader from '@/components/FilesUploader/FilesUploader.vue'
 import TimelineTimestamp from '@/components/Activities/TimelineTimestamp.vue'
@@ -601,6 +622,8 @@ const showWhatsappFlows = ref(false)
 const sendingFlowName = ref('')
 const sendFlowError = ref('')
 const showWhatsappInteractive = ref(false)
+const showWhatsappLocation = ref(false)
+const showWhatsappContact = ref(false)
 
 const whatsappMessages = createResource({
   url: 'crm.api.whatsapp.get_whatsapp_messages',
@@ -671,6 +694,48 @@ const activeChatwootCanReply = computed(() => {
   )
   return conversation ? conversation.can_reply !== false : true
 })
+
+// Conversation status (open/resolved/pending/snoozed) for the header
+// resolve/reopen toggle. Sourced from the conversation list (same place
+// can_reply comes from) rather than the messages resource, so it reflects
+// the latest known state immediately after a toggle without waiting on a
+// full message reload.
+const activeChatwootStatus = computed(() => {
+  const conversation = chatwootConversations.data?.find(
+    (c) => c.id === activeChatwootConversationId.value,
+  )
+  return conversation?.status || 'open'
+})
+
+const chatwootToggleResource = createResource({
+  url: 'crm.api.chatwoot.toggle_chatwoot_status',
+  auto: false,
+  onSuccess: (result) => {
+    const conversation = chatwootConversations.data?.find(
+      (c) => c.id === activeChatwootConversationId.value,
+    )
+    const newStatus = result?.status || conversation?.status
+    if (conversation) {
+      conversation.status = newStatus
+    }
+    toast.success(
+      newStatus === 'resolved' ? __('Conversation resolved') : __('Conversation reopened'),
+    )
+  },
+  onError: (error) => {
+    toast.error(error.messages?.[0] || __('Failed to update conversation status'))
+  },
+})
+
+function toggleChatwootStatus(nextStatus) {
+  if (!activeChatwootConversationId.value || chatwootToggleResource.loading) return
+  chatwootToggleResource.submit({
+    reference_doctype: props.doctype,
+    reference_name: props.docname,
+    conversation_id: activeChatwootConversationId.value,
+    status: nextStatus,
+  })
+}
 
 const chatwootConversations = createResource({
   url: 'crm.api.chatwoot.get_chatwoot_conversations',
@@ -906,6 +971,56 @@ function sendInteractive({ interactiveType, message, buttons, listButtonLabel, s
     buttons: buttons || [],
     list_button_label: listButtonLabel || '',
     sections: sections || [],
+    reply_to: replyMessage.value?.name || '',
+  })
+}
+
+const sendLocationResource = createResource({
+  url: 'crm.api.whatsapp.send_whatsapp_location',
+  onError: (error) => {
+    toast.error(error.messages?.[0] || __('Failed to send WhatsApp location'))
+  },
+  // Only dismiss the dialog once the send is confirmed to have gone
+  // through, mirroring sendTemplate/sendFlow/sendInteractive above.
+  onSuccess: () => {
+    showWhatsappLocation.value = false
+    whatsappMessages.reload()
+  },
+})
+
+function sendLocation({ latitude, longitude, name, address }) {
+  capture('send_whatsapp_location', { doctype: props.doctype })
+  sendLocationResource.submit({
+    reference_doctype: props.doctype,
+    reference_name: props.docname,
+    to: doc.value.mobile_no,
+    latitude,
+    longitude,
+    name: name || '',
+    address: address || '',
+    reply_to: replyMessage.value?.name || '',
+  })
+}
+
+const sendContactResource = createResource({
+  url: 'crm.api.whatsapp.send_whatsapp_contact',
+  onError: (error) => {
+    toast.error(error.messages?.[0] || __('Failed to send WhatsApp contact'))
+  },
+  onSuccess: () => {
+    showWhatsappContact.value = false
+    whatsappMessages.reload()
+  },
+})
+
+function sendContact({ contactName, phone }) {
+  capture('send_whatsapp_contact', { doctype: props.doctype })
+  sendContactResource.submit({
+    reference_doctype: props.doctype,
+    reference_name: props.docname,
+    to: doc.value.mobile_no,
+    contact_name: contactName,
+    phone,
     reply_to: replyMessage.value?.name || '',
   })
 }

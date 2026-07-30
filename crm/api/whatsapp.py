@@ -156,6 +156,7 @@ def get_whatsapp_messages(reference_doctype: str, reference_name: str):
 					"flow",
 					"flow_cta",
 					"flow_response",
+					"product_catalog_json",
 				],
 			)
 
@@ -189,6 +190,7 @@ def get_whatsapp_messages(reference_doctype: str, reference_name: str):
 			"flow",
 			"flow_cta",
 			"flow_response",
+			"product_catalog_json",
 		],
 	)
 
@@ -236,6 +238,22 @@ def get_whatsapp_messages(reference_doctype: str, reference_name: str):
 				)
 			except (TypeError, ValueError):
 				message["flow_response"] = None
+
+	# Incoming/outgoing location and contact messages carry their structured
+	# data (lat/long/name/address, or the vCard-shaped contacts list) as raw
+	# JSON on `product_catalog_json` (reused generic JSON field — see
+	# send_whatsapp_location/send_whatsapp_contact above); parse it here so
+	# the frontend renders a map-pin/contact card instead of a JSON blob.
+	for message in messages:
+		if message["content_type"] in ("location", "contact") and message.get("product_catalog_json"):
+			try:
+				message["product_catalog_json"] = (
+					json.loads(message["product_catalog_json"])
+					if isinstance(message["product_catalog_json"], str)
+					else message["product_catalog_json"]
+				)
+			except (TypeError, ValueError):
+				message["product_catalog_json"] = None
 
 	# Filter messages to get only reaction messages
 	reaction_messages = [message for message in messages if message["content_type"] == "reaction"]
@@ -492,6 +510,143 @@ def send_whatsapp_interactive(
 			"to": to,
 			"content_type": "interactive",
 			"buttons": json.dumps(buttons_payload),
+		}
+	)
+	doc.insert(ignore_permissions=True)
+	return doc.name
+
+
+@frappe.whitelist()
+def send_whatsapp_location(
+	reference_doctype: str,
+	reference_name: str,
+	to: str,
+	latitude: float,
+	longitude: float,
+	name: str | None = None,
+	address: str | None = None,
+	reply_to: str | None = None,
+):
+	"""Send a WhatsApp location pin message.
+
+	Builds the {"latitude", "longitude", "name"?, "address"?} shape
+	frappe_whatsapp's WhatsAppMessage.send_outgoing understands for
+	content_type "location" (see whatsapp_message.py) and stores it on the
+	doc's `product_catalog_json` JSON field verbatim, mirroring how
+	send_whatsapp_interactive stores its payload on `buttons` — frappe_whatsapp
+	does the actual Meta Graph API payload construction on send.
+	"""
+	validate_access(reference_doctype, reference_name)
+
+	try:
+		latitude = float(latitude)
+		longitude = float(longitude)
+	except (TypeError, ValueError):
+		frappe.throw(_("Latitude and longitude must be valid numbers."))
+
+	if not (-90 <= latitude <= 90) or not (-180 <= longitude <= 180):
+		frappe.throw(_("Latitude must be between -90 and 90, and longitude between -180 and 180."))
+
+	location_payload = {"latitude": latitude, "longitude": longitude}
+	if name and name.strip():
+		location_payload["name"] = name.strip()
+	if address and address.strip():
+		location_payload["address"] = address.strip()
+
+	doc = frappe.new_doc("WhatsApp Message")
+
+	if reply_to:
+		if not frappe.db.exists("WhatsApp Message", reply_to):
+			frappe.throw(_("Referenced WhatsApp message does not exist."), frappe.DoesNotExistError)
+		reply_doc = frappe.get_doc("WhatsApp Message", reply_to)
+		if not reply_doc.has_permission("read"):
+			frappe.throw(
+				_("Not permitted to access the referenced WhatsApp message."), frappe.PermissionError
+			)
+		validate_access(reply_doc.reference_doctype, reply_doc.reference_name)
+		doc.update(
+			{
+				"is_reply": True,
+				"reply_to_message_id": reply_doc.message_id,
+			}
+		)
+
+	doc.update(
+		{
+			"reference_doctype": reference_doctype,
+			"reference_name": reference_name,
+			"message": address or name or _("Shared Location"),
+			"to": to,
+			"content_type": "location",
+			"product_catalog_json": json.dumps(location_payload),
+		}
+	)
+	doc.insert(ignore_permissions=True)
+	return doc.name
+
+
+@frappe.whitelist()
+def send_whatsapp_contact(
+	reference_doctype: str,
+	reference_name: str,
+	to: str,
+	contact_name: str,
+	phone: str,
+	reply_to: str | None = None,
+):
+	"""Send a WhatsApp contact-card (vCard) message.
+
+	Builds the Meta `contacts` array shape (a list with one
+	{"name": {...}, "phones": [...]} dict) and stores it on the doc's
+	`product_catalog_json` field, mirroring send_whatsapp_location above.
+	frappe_whatsapp's send_outgoing "contact" branch (see whatsapp_message.py)
+	passes it through to Meta's Graph API verbatim as the `contacts` field.
+	"""
+	validate_access(reference_doctype, reference_name)
+
+	contact_name = (contact_name or "").strip()
+	phone = (phone or "").strip()
+	if not contact_name:
+		frappe.throw(_("Please enter a contact name."))
+	if not phone:
+		frappe.throw(_("Please enter a phone number."))
+
+	contacts_payload = [
+		{
+			"name": {
+				"formatted_name": contact_name,
+				"first_name": contact_name.split(" ")[0],
+			},
+			"phones": [{"phone": phone, "type": "CELL"}],
+		}
+	]
+
+	doc = frappe.new_doc("WhatsApp Message")
+
+	if reply_to:
+		if not frappe.db.exists("WhatsApp Message", reply_to):
+			frappe.throw(_("Referenced WhatsApp message does not exist."), frappe.DoesNotExistError)
+		reply_doc = frappe.get_doc("WhatsApp Message", reply_to)
+		if not reply_doc.has_permission("read"):
+			frappe.throw(
+				_("Not permitted to access the referenced WhatsApp message."), frappe.PermissionError
+			)
+		validate_access(reply_doc.reference_doctype, reply_doc.reference_name)
+		doc.update(
+			{
+				"is_reply": True,
+				"reply_to_message_id": reply_doc.message_id,
+			}
+		)
+
+	doc.update(
+		{
+			"reference_doctype": reference_doctype,
+			"reference_name": reference_name,
+			"message": contact_name,
+			"to": to,
+			"content_type": "contact",
+			"product_catalog_json": json.dumps(contacts_payload),
 		}
 	)
 	doc.insert(ignore_permissions=True)

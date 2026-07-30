@@ -135,6 +135,25 @@ def get_new_chatwoot_messages(
 
 
 @frappe.whitelist()
+def toggle_chatwoot_status(reference_doctype: str, reference_name: str, conversation_id: int, status: str):
+    """Resolve/reopen a conversation from the CRM side. Same ownership-
+    validation pattern as send_chatwoot_message/send_chatwoot_template: the
+    caller must prove the conversation belongs to a reference doc it has
+    permission on before this proxies through to Chatwoot's native
+    toggle_status endpoint."""
+    if not frappe.db.exists("DocType", "Chatwoot Settings"):
+        frappe.throw(_("Chatwoot integration is not installed."))
+    if status not in ("open", "resolved"):
+        frappe.throw(_("status must be 'open' or 'resolved'"))
+
+    _validate_conversation_ownership(reference_doctype, reference_name, conversation_id)
+
+    from frappe_chatwoot.frappe_chatwoot.api.chatwoot import toggle_status
+
+    return toggle_status(conversation_id=conversation_id, status=status)
+
+
+@frappe.whitelist()
 def send_chatwoot_message(reference_doctype: str, reference_name: str, conversation_id: int, content: str):
 	if not frappe.db.exists("DocType", "Chatwoot Settings"):
 		frappe.throw(_("Chatwoot integration is not installed."))

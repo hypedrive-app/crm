@@ -163,6 +163,51 @@
             v-else-if="whatsapp.content_type == 'flow'"
             :whatsapp="whatsapp"
           />
+          <div
+            v-else-if="whatsapp.content_type == 'location' && locationPayload(whatsapp)"
+            class="flex w-56 flex-col gap-1 rounded-md border border-outline-gray-2 bg-surface-white p-2.5"
+          >
+            <div class="flex items-center gap-1.5 text-sm-medium text-ink-gray-8">
+              <LocationIcon class="size-3.5 shrink-0 text-ink-gray-5" />
+              <span class="truncate">
+                {{ locationPayload(whatsapp).name || __('Shared Location') }}
+              </span>
+            </div>
+            <div
+              v-if="locationPayload(whatsapp).address"
+              class="text-xs text-ink-gray-5"
+            >
+              {{ locationPayload(whatsapp).address }}
+            </div>
+            <div class="text-2xs text-ink-gray-4">
+              {{ locationPayload(whatsapp).latitude }}, {{ locationPayload(whatsapp).longitude }}
+            </div>
+            <a
+              :href="mapsUrl(locationPayload(whatsapp))"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="mt-1 text-sm-medium text-ink-blue-link"
+            >
+              {{ __('View on Map') }}
+            </a>
+          </div>
+          <div
+            v-else-if="whatsapp.content_type == 'contact' && contactPayload(whatsapp)"
+            class="flex w-56 flex-col gap-1 rounded-md border border-outline-gray-2 bg-surface-white p-2.5"
+          >
+            <div class="flex items-center gap-1.5 text-sm-medium text-ink-gray-8">
+              <ContactIcon class="size-3.5 shrink-0 text-ink-gray-5" />
+              <span class="truncate">
+                {{ contactPayload(whatsapp).formatted_name || __('Shared Contact') }}
+              </span>
+            </div>
+            <div
+              v-if="contactPayload(whatsapp).phone"
+              class="text-xs text-ink-gray-5"
+            >
+              {{ contactPayload(whatsapp).phone }}
+            </div>
+          </div>
           <div v-else-if="whatsapp.content_type == 'image'">
             <img
               :src="whatsapp.attach"
@@ -257,6 +302,8 @@ import DoubleCheckIcon from '@/components/Icons/DoubleCheckIcon.vue'
 import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
 import ReactIcon from '@/components/Icons/ReactIcon.vue'
 import WhatsAppFlowMessage from '@/components/Activities/WhatsAppFlowMessage.vue'
+import LocationIcon from '@/components/Icons/LocationIcon.vue'
+import ContactIcon from '@/components/Icons/ContactIcon.vue'
 import { formatDate, sanitizeHTML } from '@/utils'
 import { useTelemetry } from 'frappe-ui/frappe'
 import { Tooltip, Dropdown, createResource, toast } from 'frappe-ui'
@@ -301,6 +348,45 @@ function interactivePayload(whatsapp) {
   }
   interactivePayloadCache.set(whatsapp, parsed)
   return parsed
+}
+
+// Parses a location WhatsApp Message's `product_catalog_json` field (already
+// parsed to an object server-side by get_whatsapp_messages, but defensively
+// handled here in case it arrives as a raw string) into the shape the
+// map-pin card above renders.
+function locationPayload(whatsapp) {
+  const data = whatsapp?.product_catalog_json
+  if (!data) return null
+  try {
+    const parsed = typeof data == 'string' ? JSON.parse(data) : data
+    if (parsed?.latitude == null || parsed?.longitude == null) return null
+    return parsed
+  } catch (e) {
+    return null
+  }
+}
+
+function mapsUrl(location) {
+  return `https://maps.google.com/?q=${location.latitude},${location.longitude}`
+}
+
+// Parses a contact WhatsApp Message's `product_catalog_json` field (a Meta
+// `contacts` array — see send_whatsapp_contact / webhook.py's inbound
+// "contacts" branch) into a flat {formatted_name, phone} for the contact card.
+function contactPayload(whatsapp) {
+  const data = whatsapp?.product_catalog_json
+  if (!data) return null
+  try {
+    const parsed = typeof data == 'string' ? JSON.parse(data) : data
+    const first = Array.isArray(parsed) ? parsed[0] : null
+    if (!first) return null
+    return {
+      formatted_name: first.name?.formatted_name || '',
+      phone: first.phones?.[0]?.phone || '',
+    }
+  } catch (e) {
+    return null
+  }
 }
 
 function openFileInAnotherTab(url) {

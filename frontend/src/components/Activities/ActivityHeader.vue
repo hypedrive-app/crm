@@ -71,6 +71,14 @@
         :label="__('Send Interactive')"
         @click="showWhatsappInteractive = true"
       />
+      <Dropdown :options="whatsappMoreActions">
+        <template #default="{ open }">
+          <Button
+            :label="__('More')"
+            :iconRight="open ? 'chevron-up' : 'chevron-down'"
+          />
+        </template>
+      </Dropdown>
       <Button
         variant="solid"
         :label="__('New Message')"
@@ -109,6 +117,8 @@ import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
+import LocationIcon from '@/components/Icons/LocationIcon.vue'
+import ContactIcon from '@/components/Icons/ContactIcon.vue'
 import { globalStore } from '@/stores/global'
 import { whatsappEnabled } from '@/composables/whatsapp'
 import { callEnabled } from '@/composables/telephony'
@@ -133,6 +143,12 @@ const showWhatsappFlows = defineModel('showWhatsappFlows', {
   type: Boolean,
 })
 const showWhatsappInteractive = defineModel('showWhatsappInteractive', {
+  type: Boolean,
+})
+const showWhatsappLocation = defineModel('showWhatsappLocation', {
+  type: Boolean,
+})
+const showWhatsappContact = defineModel('showWhatsappContact', {
   type: Boolean,
 })
 const showFilesUploader = defineModel('showFilesUploader', { type: Boolean })
@@ -196,6 +212,19 @@ const defaultActions = computed(() => {
 function getTabIndex(name) {
   return props.tabs.findIndex((tab) => tab.name === name)
 }
+
+const whatsappMoreActions = computed(() => [
+  {
+    icon: h(LocationIcon, { class: 'h-4 w-4' }),
+    label: __('Send Location'),
+    onClick: () => (showWhatsappLocation.value = true),
+  },
+  {
+    icon: h(ContactIcon, { class: 'h-4 w-4' }),
+    label: __('Send Contact'),
+    onClick: () => (showWhatsappContact.value = true),
+  },
+])
 
 const callActions = computed(() => {
   let actions = [
