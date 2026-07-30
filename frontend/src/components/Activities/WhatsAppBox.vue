@@ -57,13 +57,19 @@
   </div>
   <div v-else class="flex items-end gap-2 px-3 py-2.5 sm:px-10" v-bind="$attrs">
     <div class="flex h-8 items-center gap-1">
+      <!-- Compose actions live in the composer, not the header — canonical
+           messaging pattern (WhatsApp/Chatwoot/Front/Intercom): one "+" menu
+           beside the input for attachments and rich message types. Send
+           Template gets its own icon below since it's functionally distinct
+           (the 24h-window reopener, often needed on an otherwise-empty
+           conversation). -->
       <FileUploader @success="(file) => uploadFile(file)">
         <template #default="{ openFileSelector }">
-          <Dropdown :options="uploadOptions(openFileSelector)">
-            <Tooltip :text="__('Attach')">
+          <Dropdown :options="composeOptions(openFileSelector)">
+            <Tooltip :text="__('Attach / send')">
               <button
                 type="button"
-                :aria-label="__('Attach a file')"
+                :aria-label="__('Attach a file or send a rich message')"
                 class="flex size-7 items-center justify-center rounded text-ink-gray-5 hover:bg-surface-gray-2 hover:text-ink-gray-7"
               >
                 <span class="lucide-plus size-4.5" aria-hidden="true" />
@@ -72,6 +78,16 @@
           </Dropdown>
         </template>
       </FileUploader>
+      <Tooltip :text="__('Send Template')">
+        <button
+          type="button"
+          :aria-label="__('Send a WhatsApp template')"
+          class="flex size-7 items-center justify-center rounded text-ink-gray-5 hover:bg-surface-gray-2 hover:text-ink-gray-7"
+          @click="emit('sendTemplate')"
+        >
+          <span class="lucide-layout-template size-4.5" aria-hidden="true" />
+        </button>
+      </Tooltip>
       <IconPicker
         v-slot="{ togglePopover }"
         v-model="emoji"
@@ -144,7 +160,13 @@ const props = defineProps({
   canReply: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['sendTemplate'])
+const emit = defineEmits([
+  'sendTemplate',
+  'sendFlow',
+  'sendInteractive',
+  'sendLocation',
+  'sendContact',
+])
 
 const doc = defineModel({ type: Object, default: () => ({}) })
 const whatsapp = defineModel('whatsapp', { type: Object, default: () => ({}) })
@@ -282,39 +304,74 @@ async function sendWhatsAppMessage() {
   })
 }
 
-function uploadOptions(openFileSelector) {
+// The composer's "+" menu: file attachments plus the WhatsApp rich-message
+// types that used to be header buttons (Flow / Interactive / Location /
+// Contact). Grouped with a divider so uploads and rich-sends read as distinct
+// families. Each rich action emits up to Activities.vue, which owns the
+// corresponding modal.
+function composeOptions(openFileSelector) {
   return [
     {
-      label: __('Upload Document'),
-      icon: 'file',
-      onClick: () => {
-        fileType.value = 'document'
-        openFileSelector()
-      },
+      group: __('Attach'),
+      items: [
+        {
+          label: __('Document'),
+          icon: 'file',
+          onClick: () => {
+            fileType.value = 'document'
+            openFileSelector()
+          },
+        },
+        {
+          label: __('Image'),
+          icon: 'image',
+          onClick: () => {
+            fileType.value = 'image'
+            openFileSelector('image/*')
+          },
+        },
+        {
+          label: __('Video'),
+          icon: 'video',
+          onClick: () => {
+            fileType.value = 'video'
+            openFileSelector('video/*')
+          },
+        },
+        {
+          label: __('Audio'),
+          icon: 'mic',
+          onClick: () => {
+            fileType.value = 'audio'
+            openFileSelector('audio/*')
+          },
+        },
+      ],
     },
     {
-      label: __('Upload Image'),
-      icon: 'image',
-      onClick: () => {
-        fileType.value = 'image'
-        openFileSelector('image/*')
-      },
-    },
-    {
-      label: __('Upload Video'),
-      icon: 'video',
-      onClick: () => {
-        fileType.value = 'video'
-        openFileSelector('video/*')
-      },
-    },
-    {
-      label: __('Upload Audio'),
-      icon: 'mic',
-      onClick: () => {
-        fileType.value = 'audio'
-        openFileSelector('audio/*')
-      },
+      group: __('Send'),
+      items: [
+        {
+          label: __('Flow'),
+          icon: 'layout',
+          onClick: () => emit('sendFlow'),
+        },
+        {
+          label: __('Interactive'),
+          icon: 'list',
+          onClick: () => emit('sendInteractive'),
+        },
+        {
+          label: __('Location'),
+          icon: 'map-pin',
+          onClick: () => emit('sendLocation'),
+        },
+        {
+          label: __('Contact'),
+          icon: 'user',
+          onClick: () => emit('sendContact'),
+        },
+      ],
     },
   ]
 }

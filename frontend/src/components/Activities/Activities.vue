@@ -1,11 +1,6 @@
 <template>
   <ActivityHeader
     v-model="tabIndex"
-    v-model:showWhatsappTemplates="showWhatsappTemplates"
-    v-model:showWhatsappFlows="showWhatsappFlows"
-    v-model:showWhatsappInteractive="showWhatsappInteractive"
-    v-model:showWhatsappLocation="showWhatsappLocation"
-    v-model:showWhatsappContact="showWhatsappContact"
     v-model:showFilesUploader="showFilesUploader"
     v-model:emailBox="emailBox"
     :tabs="tabs"
@@ -442,6 +437,10 @@
       :doctype="doctype"
       :can-reply="whatsappCanReply"
       @send-template="showWhatsappTemplates = true"
+      @send-flow="showWhatsappFlows = true"
+      @send-interactive="showWhatsappInteractive = true"
+      @send-location="showWhatsappLocation = true"
+      @send-contact="showWhatsappContact = true"
       @scroll="scroll"
     />
     <ChatwootBox

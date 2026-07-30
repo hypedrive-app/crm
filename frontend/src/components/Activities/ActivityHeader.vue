@@ -58,34 +58,22 @@
       iconLeft="plus"
       @click="showFilesUploader = true"
     />
-    <div v-else-if="title == 'WhatsApp'" class="flex gap-2 shrink-0">
-      <Button
-        :label="__('Send Template')"
-        @click="showWhatsappTemplates = true"
-      />
-      <Button
-        :label="__('Send Flow')"
-        @click="showWhatsappFlows = true"
-      />
-      <Button
-        :label="__('Send Interactive')"
-        @click="showWhatsappInteractive = true"
-      />
-      <Dropdown :options="whatsappMoreActions">
-        <template #default="{ open }">
-          <Button
-            :label="__('More')"
-            :iconRight="open ? 'chevron-up' : 'chevron-down'"
-          />
-        </template>
-      </Dropdown>
-      <Button
-        variant="solid"
-        :label="__('New Message')"
-        iconLeft="plus"
-        @click="whatsappBox.show()"
-      />
-    </div>
+    <!-- WhatsApp: the send-type actions (Template / Flow / Interactive /
+         Location / Contact) used to sit here as five same-weight header
+         buttons, which overflowed on mobile and had no hierarchy. Canonical
+         messaging UIs (Chatwoot, Front, Intercom, WhatsApp itself) keep the
+         header for conversation-meta only and put every compose affordance in
+         the composer, beside the text input. So those actions now live in
+         WhatsAppBox; the header keeps just the single primary CTA that focuses
+         the composer. -->
+    <Button
+      v-else-if="title == 'WhatsApp'"
+      variant="solid"
+      class="shrink-0"
+      :label="__('New Message')"
+      iconLeft="plus"
+      @click="whatsappBox.show()"
+    />
     <!-- Chatwoot has no create-new action of its own (no "start conversation"
     endpoint exists — conversations only originate from the customer's side or
     from Chatwoot itself) and no case for it below, so it used to silently
@@ -117,8 +105,6 @@ import NoteIcon from '@/components/Icons/NoteIcon.vue'
 import TaskIcon from '@/components/Icons/TaskIcon.vue'
 import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
-import LocationIcon from '@/components/Icons/LocationIcon.vue'
-import ContactIcon from '@/components/Icons/ContactIcon.vue'
 import { globalStore } from '@/stores/global'
 import { whatsappEnabled } from '@/composables/whatsapp'
 import { callEnabled } from '@/composables/telephony'
@@ -136,21 +122,6 @@ const props = defineProps({
 const { makeCall } = globalStore()
 
 const tabIndex = defineModel({ type: Number })
-const showWhatsappTemplates = defineModel('showWhatsappTemplates', {
-  type: Boolean,
-})
-const showWhatsappFlows = defineModel('showWhatsappFlows', {
-  type: Boolean,
-})
-const showWhatsappInteractive = defineModel('showWhatsappInteractive', {
-  type: Boolean,
-})
-const showWhatsappLocation = defineModel('showWhatsappLocation', {
-  type: Boolean,
-})
-const showWhatsappContact = defineModel('showWhatsappContact', {
-  type: Boolean,
-})
 const showFilesUploader = defineModel('showFilesUploader', { type: Boolean })
 const emailBox = defineModel('emailBox', { type: Object, default: () => ({}) })
 
@@ -212,19 +183,6 @@ const defaultActions = computed(() => {
 function getTabIndex(name) {
   return props.tabs.findIndex((tab) => tab.name === name)
 }
-
-const whatsappMoreActions = computed(() => [
-  {
-    icon: h(LocationIcon, { class: 'h-4 w-4' }),
-    label: __('Send Location'),
-    onClick: () => (showWhatsappLocation.value = true),
-  },
-  {
-    icon: h(ContactIcon, { class: 'h-4 w-4' }),
-    label: __('Send Contact'),
-    onClick: () => (showWhatsappContact.value = true),
-  },
-])
 
 const callActions = computed(() => {
   let actions = [
