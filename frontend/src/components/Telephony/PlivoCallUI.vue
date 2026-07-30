@@ -39,6 +39,16 @@
             class="rounded-full"
             @click="toggleMute"
           />
+          <!-- Audio routing. Previously the call always used the OS default, so
+               plugging in a headset mid-call left the audio on the laptop
+               speaker with no way to move it. -->
+          <Dropdown :options="audioDeviceOptions" placement="right">
+            <Button
+              class="rounded-full"
+              :tooltip="__('Audio device')"
+              icon="headphones"
+            />
+          </Dropdown>
           <Button
             class="cursor-pointer rounded-full"
             :tooltip="__('Add a Note')"
@@ -161,8 +171,8 @@ import { useDoctypeModal } from '@/composables/doctypeModal'
 import Plivo from 'plivo-browser-sdk'
 import { useDraggable, useWindowSize } from '@vueuse/core'
 import { useTelemetry } from 'frappe-ui/frappe'
-import { Avatar, call, createResource, toast } from 'frappe-ui'
-import { ref, watch } from 'vue'
+import { Avatar, call, createResource, Dropdown, toast } from 'frappe-ui'
+import { computed, ref, watch } from 'vue'
 
 const { capture } = useTelemetry()
 
@@ -177,6 +187,92 @@ let currentCallUUID = null
 // never rendered anywhere, so without this every startup/login failure left the
 // call button looking operational while doing nothing at all.
 const ready = ref(false)
+
+// Audio routing. Nothing selected a device before, so calls used whatever the OS
+// default happened to be — plug in headphones mid-session and the call kept
+// playing out of the laptop speaker (and the headset mic went unused). The SDK
+// exposes get/set for each role; we persist the choice per browser.
+const audioDevices = ref({ input: [], output: [] })
+const selectedInput = ref(localStorage.getItem('plivo:inputDevice') || '')
+const selectedOutput = ref(localStorage.getItem('plivo:outputDevice') || '')
+
+async function refreshAudioDevices() {
+  if (!client?.audio) return
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    audioDevices.value = {
+      input: devices.filter((d) => d.kind === 'audioinput'),
+      output: devices.filter((d) => d.kind === 'audiooutput'),
+    }
+  } catch (err) {
+    log.value = 'Could not list audio devices: ' + err.message
+  }
+}
+
+// Applies the stored preference. Safe to call before a call starts — the SDK
+// keeps the selection for subsequent calls.
+function applyAudioDevices() {
+  if (!client?.audio) return
+  try {
+    if (selectedInput.value) {
+      client.audio.microphoneDevices.set(selectedInput.value)
+    }
+    if (selectedOutput.value) {
+      client.audio.speakerDevices.set(selectedOutput.value)
+      // Ring in the same place the call will be heard, otherwise an incoming
+      // call rings on the laptop while the audio goes to the headset.
+      client.audio.ringtoneDevices?.set?.(selectedOutput.value)
+    }
+  } catch (err) {
+    log.value = 'Could not set audio device: ' + err.message
+  }
+}
+
+function onSelectInput(deviceId) {
+  selectedInput.value = deviceId
+  localStorage.setItem('plivo:inputDevice', deviceId)
+  applyAudioDevices()
+}
+
+function onSelectOutput(deviceId) {
+  selectedOutput.value = deviceId
+  localStorage.setItem('plivo:outputDevice', deviceId)
+  applyAudioDevices()
+}
+
+// Grouped picker: speakers/headphones first (the common case — "put this call
+// in my headset"), then microphones. Labels are blank until mic permission is
+// granted, so fall back to a positional name rather than showing empty rows.
+const audioDeviceOptions = computed(() => {
+  const label = (d, i, kind) => d.label || `${kind} ${i + 1}`
+  const group = (kind, devices, selected, onSelect) => ({
+    group: kind,
+    hideLabel: false,
+    items: devices.map((d, i) => ({
+      label: (d.deviceId === selected ? '● ' : '') + label(d, i, kind),
+      onClick: () => onSelect(d.deviceId),
+    })),
+  })
+
+  const groups = []
+  if (audioDevices.value.output.length) {
+    groups.push(
+      group(__('Speaker'), audioDevices.value.output, selectedOutput.value, onSelectOutput),
+    )
+  }
+  if (audioDevices.value.input.length) {
+    groups.push(
+      group(__('Microphone'), audioDevices.value.input, selectedInput.value, onSelectInput),
+    )
+  }
+  if (!groups.length) {
+    groups.push({
+      group: __('Audio'),
+      items: [{ label: __('No devices detected'), onClick: () => {} }],
+    })
+  }
+  return groups
+})
 
 let showCallPopup = ref(false)
 let showSmallCallWindow = ref(false)
@@ -296,6 +392,14 @@ function addClientListeners() {
   client.on('onLogin', () => {
     log.value = 'Ready to make and receive calls!'
     ready.value = true
+    refreshAudioDevices().then(applyAudioDevices)
+  })
+
+  // Headphones plugged in or removed mid-session. Without this the SDK keeps
+  // using the device it resolved at login, so the call stays on the laptop
+  // speaker after you put a headset on.
+  navigator.mediaDevices?.addEventListener?.('devicechange', () => {
+    refreshAudioDevices().then(applyAudioDevices)
   })
 
   client.on('onLoginFailed', (cause) => {
@@ -445,6 +549,11 @@ function makeOutgoingCall(number) {
     startupClient()
     return
   }
+
+  // Re-assert routing at dial time: device LABELS are only readable once mic
+  // permission has been granted, so the list captured at login is often
+  // unlabelled and a saved preference may not have matched anything yet.
+  applyAudioDevices()
 
   log.value = `Attempting to call ${number} ...`
   client.call(number, {})
