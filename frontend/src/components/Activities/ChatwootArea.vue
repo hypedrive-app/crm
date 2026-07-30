@@ -2,54 +2,50 @@
 <template>
   <div>
     <div
-      v-if="conversations.length > 1"
-      class="mb-3 flex flex-wrap gap-1 border-b px-3 pb-2 sm:px-10"
-    >
-      <button
-        v-for="conv in conversations"
-        :key="conv.id"
-        type="button"
-        class="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-p-sm transition-colors"
-        :class="
-          conv.id === activeConversationId
-            ? 'bg-surface-gray-3 text-ink-gray-9 text-sm-medium'
-            : 'text-ink-gray-5 hover:bg-surface-gray-1 hover:text-ink-gray-7'
-        "
-        @click="$emit('selectConversation', conv.id)"
-      >
-        <span
-          class="size-1.5 shrink-0 rounded-full"
-          :class="conv.status === 'resolved' ? 'bg-ink-gray-4' : 'bg-ink-green-3'"
-        />
-        {{ conversationLabel(conv) }}
-        <span
-          v-if="conv.unread_count"
-          class="rounded-full bg-surface-red-2 px-1.5 text-2xs text-ink-red-4"
-        >
-          {{ conv.unread_count }}
-        </span>
-      </button>
-    </div>
-    <div
       v-if="activeConversationId"
-      class="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 sm:px-10"
+      class="mx-3 mb-3 rounded-lg border bg-surface-gray-1 sm:mx-10"
     >
-      <div class="flex flex-wrap items-center gap-2">
-        <Badge
-          :theme="isResolved ? 'green' : 'blue'"
-          variant="subtle"
-          :label="isResolved ? __('Resolved') : __('Open')"
-        />
+      <div
+        v-if="conversations.length > 1"
+        class="flex flex-wrap gap-1 border-b p-1.5"
+      >
+        <button
+          v-for="conv in conversations"
+          :key="conv.id"
+          type="button"
+          class="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-p-sm transition-colors"
+          :class="
+            conv.id === activeConversationId
+              ? 'bg-surface-white text-ink-gray-9 text-sm-medium shadow-sm'
+              : 'text-ink-gray-5 hover:bg-surface-white/60 hover:text-ink-gray-7'
+          "
+          @click="$emit('selectConversation', conv.id)"
+        >
+          <span
+            class="size-1.5 shrink-0 rounded-full"
+            :class="conv.status === 'resolved' ? 'bg-ink-gray-4' : 'bg-ink-green-3'"
+          />
+          {{ conversationLabel(conv) }}
+          <span
+            v-if="conv.unread_count"
+            class="rounded-full bg-surface-red-2 px-1.5 text-2xs text-ink-red-4"
+          >
+            {{ conv.unread_count }}
+          </span>
+        </button>
+      </div>
+      <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 p-2 pl-3">
         <div
           v-if="assignee?.name"
-          class="flex items-center gap-1.5 rounded-md bg-surface-gray-1 py-1 pl-1 pr-2 text-p-sm text-ink-gray-7"
+          class="flex items-center gap-1.5 text-p-sm text-ink-gray-7"
         >
           <Avatar :image="assignee.avatar" :label="assignee.name" size="sm" />
-          <span>{{ assignee.name }}</span>
+          <span>{{ __('Assigned to {0}', [assignee.name]) }}</span>
         </div>
-      </div>
-      <div class="flex shrink-0 items-center gap-1">
-        <Tooltip :text="isResolved ? __('Reopen conversation') : __('Resolve conversation')">
+        <div v-else class="text-p-sm text-ink-gray-5">
+          {{ isResolved ? __('This conversation is resolved') : __('Unassigned conversation') }}
+        </div>
+        <div class="flex shrink-0 items-center gap-1.5">
           <Button
             size="sm"
             variant="subtle"
@@ -65,26 +61,28 @@
             </template>
             {{ isResolved ? __('Reopen') : __('Resolve') }}
           </Button>
-        </Tooltip>
-        <Tooltip :text="__('Search in this conversation')">
-          <Button
-            size="sm"
-            :variant="showSearch ? 'solid' : 'subtle'"
-            @click="toggleSearch"
-          >
-            <span class="lucide-search size-3.5" aria-hidden="true" />
-          </Button>
-        </Tooltip>
-        <Tooltip v-if="chatwootUrl" :text="__('Open in Chatwoot')">
-          <a
-            :href="chatwootUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="flex size-7 items-center justify-center rounded text-ink-gray-5 hover:bg-surface-gray-1 hover:text-ink-gray-8"
-          >
-            <span class="lucide-external-link size-3.5" aria-hidden="true" />
-          </a>
-        </Tooltip>
+          <div class="h-4 w-px bg-outline-gray-2" />
+          <Tooltip :text="__('Search in this conversation')">
+            <Button
+              size="sm"
+              variant="ghost"
+              :class="showSearch ? 'bg-surface-gray-3' : ''"
+              @click="toggleSearch"
+            >
+              <span class="lucide-search size-3.5" aria-hidden="true" />
+            </Button>
+          </Tooltip>
+          <Tooltip v-if="chatwootUrl" :text="__('Open in Chatwoot')">
+            <a
+              :href="chatwootUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex size-7 items-center justify-center rounded text-ink-gray-5 hover:bg-surface-white hover:text-ink-gray-8"
+            >
+              <span class="lucide-external-link size-3.5" aria-hidden="true" />
+            </a>
+          </Tooltip>
+        </div>
       </div>
     </div>
     <div v-if="showSearch" class="mb-3 px-3 sm:px-10">
@@ -187,7 +185,7 @@
 </template>
 
 <script setup>
-import { Tooltip, Button, TextInput, Avatar, Badge } from 'frappe-ui'
+import { Tooltip, Button, TextInput, Avatar } from 'frappe-ui'
 import { computed, h, nextTick, ref, watch } from 'vue'
 import { formatDate, sanitizeHTML, timeAgo } from '@/utils'
 
