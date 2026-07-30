@@ -2,67 +2,90 @@
 <template>
   <div>
     <div
-      v-if="activeConversationId"
-      class="mb-3 flex flex-wrap items-center gap-2 px-3 sm:px-10"
-    >
-      <Tooltip :text="isResolved ? __('Reopen conversation') : __('Resolve conversation')">
-        <Button
-          size="sm"
-          :loading="toggling"
-          @click="$emit('toggleStatus', isResolved ? 'open' : 'resolved')"
-        >
-          <template #prefix>
-            <span
-              :class="isResolved ? 'lucide-rotate-ccw' : 'lucide-check-circle'"
-              class="size-3.5"
-              aria-hidden="true"
-            />
-          </template>
-          {{ isResolved ? __('Reopen') : __('Resolve') }}
-        </Button>
-      </Tooltip>
-      <Tooltip :text="__('Search in this conversation')">
-        <Button
-          size="sm"
-          :variant="showSearch ? 'solid' : 'subtle'"
-          @click="toggleSearch"
-        >
-          <template #prefix>
-            <span class="lucide-search size-3.5" aria-hidden="true" />
-          </template>
-        </Button>
-      </Tooltip>
-      <div
-        v-if="assignee?.name"
-        class="flex items-center gap-1.5 rounded-md bg-surface-gray-1 py-1 pl-1 pr-2 text-p-sm text-ink-gray-7"
-      >
-        <Avatar :image="assignee.avatar" :label="assignee.name" size="sm" />
-        <span>{{ __('Assigned to {0}', [assignee.name]) }}</span>
-      </div>
-      <a
-        v-if="chatwootUrl"
-        :href="chatwootUrl"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="ml-auto flex shrink-0 items-center gap-1 text-p-sm text-ink-gray-5 hover:text-ink-gray-8"
-      >
-        {{ __('Open in Chatwoot') }}
-        <span class="lucide-external-link size-3.5" aria-hidden="true" />
-      </a>
-    </div>
-    <div
       v-if="conversations.length > 1"
-      class="mb-3 flex flex-wrap gap-1.5 px-3 sm:px-10"
+      class="mb-3 flex flex-wrap gap-1 border-b px-3 pb-2 sm:px-10"
     >
-      <Button
+      <button
         v-for="conv in conversations"
         :key="conv.id"
-        :variant="conv.id === activeConversationId ? 'solid' : 'subtle'"
-        size="sm"
+        type="button"
+        class="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-p-sm transition-colors"
+        :class="
+          conv.id === activeConversationId
+            ? 'bg-surface-gray-3 text-ink-gray-9 text-sm-medium'
+            : 'text-ink-gray-5 hover:bg-surface-gray-1 hover:text-ink-gray-7'
+        "
         @click="$emit('selectConversation', conv.id)"
       >
-        {{ conv.meta?.sender?.name || conv.meta?.sender?.phone_number || `#${conv.id}` }}
-      </Button>
+        <span
+          class="size-1.5 shrink-0 rounded-full"
+          :class="conv.status === 'resolved' ? 'bg-ink-gray-4' : 'bg-ink-green-3'"
+        />
+        {{ conversationLabel(conv) }}
+        <span
+          v-if="conv.unread_count"
+          class="rounded-full bg-surface-red-2 px-1.5 text-2xs text-ink-red-4"
+        >
+          {{ conv.unread_count }}
+        </span>
+      </button>
+    </div>
+    <div
+      v-if="activeConversationId"
+      class="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 sm:px-10"
+    >
+      <div class="flex flex-wrap items-center gap-2">
+        <Badge
+          :theme="isResolved ? 'green' : 'blue'"
+          variant="subtle"
+          :label="isResolved ? __('Resolved') : __('Open')"
+        />
+        <div
+          v-if="assignee?.name"
+          class="flex items-center gap-1.5 rounded-md bg-surface-gray-1 py-1 pl-1 pr-2 text-p-sm text-ink-gray-7"
+        >
+          <Avatar :image="assignee.avatar" :label="assignee.name" size="sm" />
+          <span>{{ assignee.name }}</span>
+        </div>
+      </div>
+      <div class="flex shrink-0 items-center gap-1">
+        <Tooltip :text="isResolved ? __('Reopen conversation') : __('Resolve conversation')">
+          <Button
+            size="sm"
+            variant="subtle"
+            :loading="toggling"
+            @click="$emit('toggleStatus', isResolved ? 'open' : 'resolved')"
+          >
+            <template #prefix>
+              <span
+                :class="isResolved ? 'lucide-rotate-ccw' : 'lucide-check-circle'"
+                class="size-3.5"
+                aria-hidden="true"
+              />
+            </template>
+            {{ isResolved ? __('Reopen') : __('Resolve') }}
+          </Button>
+        </Tooltip>
+        <Tooltip :text="__('Search in this conversation')">
+          <Button
+            size="sm"
+            :variant="showSearch ? 'solid' : 'subtle'"
+            @click="toggleSearch"
+          >
+            <span class="lucide-search size-3.5" aria-hidden="true" />
+          </Button>
+        </Tooltip>
+        <Tooltip v-if="chatwootUrl" :text="__('Open in Chatwoot')">
+          <a
+            :href="chatwootUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex size-7 items-center justify-center rounded text-ink-gray-5 hover:bg-surface-gray-1 hover:text-ink-gray-8"
+          >
+            <span class="lucide-external-link size-3.5" aria-hidden="true" />
+          </a>
+        </Tooltip>
+      </div>
     </div>
     <div v-if="showSearch" class="mb-3 px-3 sm:px-10">
       <TextInput
@@ -119,7 +142,7 @@
             v-html="formatChatwootMessage(message.content)"
           />
           <div v-else class="italic text-ink-gray-5">
-            {{ __('Template message') }}
+            {{ templateFallbackLabel(message) }}
           </div>
           <div
             v-if="message.attachments?.length"
@@ -164,9 +187,9 @@
 </template>
 
 <script setup>
-import { Tooltip, Button, TextInput, Avatar } from 'frappe-ui'
+import { Tooltip, Button, TextInput, Avatar, Badge } from 'frappe-ui'
 import { computed, h, nextTick, ref, watch } from 'vue'
-import { formatDate, sanitizeHTML } from '@/utils'
+import { formatDate, sanitizeHTML, timeAgo } from '@/utils'
 
 const props = defineProps({
   messages: { type: Array, default: () => [] },
@@ -289,10 +312,31 @@ function openFileInAnotherTab(url) {
   window.open(url, '_blank')
 }
 
+// The switcher used to label every tab with the contact's name — useless
+// once a contact has more than one conversation, since every tab reads
+// identically (this is exactly why it shipped confusing: 2 conversations,
+// both "Shivam Gupta", no way to tell them apart without clicking through).
+// Status + recency is what actually distinguishes conversations in Chatwoot's
+// own inbox UI, so mirror that instead.
+function conversationLabel(conv) {
+  const status = conv.status === 'resolved' ? __('Resolved') : __('Open')
+  const last = conv.last_activity_at || conv.timestamp
+  return last ? `${status} · ${timeAgo(last * 1000)}` : status
+}
+
 function formatChatwootMessage(message) {
   if (!message) return ''
   message = message.replace(/\n/g, '<br>')
   return sanitizeHTML(message)
+}
+
+// Chatwoot's own /messages response never echoes the rendered template body
+// back in `content` for a template send — only in `additional_attributes.
+// template_params.name`, the Meta template's machine name. Surface that
+// instead of a generic placeholder wherever it's available.
+function templateFallbackLabel(message) {
+  const name = message.additional_attributes?.template_params?.name
+  return name ? __('Template: {0}', [name]) : __('Template message')
 }
 
 // Delivery tick — visual state only (no text label), mirroring WhatsApp's own
