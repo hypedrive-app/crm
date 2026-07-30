@@ -1,6 +1,74 @@
 <!-- eslint-disable vue/no-v-html -->
 <template>
   <div>
+    <div
+      v-if="activeConversationId"
+      class="mb-3 flex items-center gap-2 overflow-x-auto px-3 sm:px-10"
+    >
+      <template v-if="conversations.length > 1">
+        <Button
+          v-for="conv in conversations"
+          :key="conv.id"
+          size="sm"
+          :variant="conv.id === activeConversationId ? 'solid' : 'subtle'"
+          class="shrink-0"
+          @click="$emit('selectConversation', conv.id)"
+        >
+          <template #prefix>
+            <span
+              class="size-1.5 shrink-0 rounded-full"
+              :class="conv.status === 'resolved' ? 'bg-ink-gray-4' : 'bg-ink-green-3'"
+            />
+          </template>
+          {{ conversationLabel(conv) }}
+          <span
+            v-if="conv.unread_count"
+            class="ml-1 rounded-full bg-surface-red-2 px-1.5 text-2xs text-ink-red-4"
+          >
+            {{ conv.unread_count }}
+          </span>
+        </Button>
+        <div class="h-5 w-px shrink-0 bg-outline-gray-2" />
+      </template>
+      <div class="flex shrink-0 items-center gap-2">
+        <Button
+          size="sm"
+          variant="subtle"
+          :loading="toggling"
+          @click="$emit('toggleStatus', isResolved ? 'open' : 'resolved')"
+        >
+          <template #prefix>
+            <span
+              :class="isResolved ? 'lucide-rotate-ccw' : 'lucide-check-circle'"
+              class="size-3.5"
+              aria-hidden="true"
+            />
+          </template>
+          {{ isResolved ? __('Reopen') : __('Resolve') }}
+        </Button>
+        <Tooltip :text="__('Search in this conversation')">
+          <Button
+            size="sm"
+            :variant="showSearch ? 'solid' : 'subtle'"
+            @click="toggleSearch"
+          >
+            <span class="lucide-search size-3.5" aria-hidden="true" />
+          </Button>
+        </Tooltip>
+        <Tooltip v-if="chatwootUrl" :text="__('Open in Chatwoot')">
+          <Button size="sm" variant="subtle">
+            <a
+              :href="chatwootUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex items-center"
+            >
+              <span class="lucide-external-link size-3.5" aria-hidden="true" />
+            </a>
+          </Button>
+        </Tooltip>
+      </div>
+    </div>
     <div v-if="showSearch" class="mb-3 px-3 sm:px-10">
       <TextInput
         ref="searchInputRef"
@@ -101,29 +169,39 @@
 </template>
 
 <script setup>
-import { Tooltip, TextInput } from 'frappe-ui'
+import { Tooltip, Button, TextInput } from 'frappe-ui'
 import { computed, h, nextTick, ref, watch } from 'vue'
-import { formatDate, sanitizeHTML } from '@/utils'
+import { formatDate, sanitizeHTML, timeAgo } from '@/utils'
 
 const props = defineProps({
   messages: { type: Array, default: () => [] },
+  conversations: { type: Array, default: () => [] },
   activeConversationId: { type: [Number, String], default: null },
+  status: { type: String, default: 'open' },
+  toggling: { type: Boolean, default: false },
+  assignee: { type: Object, default: null },
+  chatwootUrl: { type: String, default: null },
 })
 
-// Search is triggered from ActivityHeader's search icon (shared header row
-// with every other tab's actions); the input + results still render here,
-// inline above the message thread.
-const showSearch = defineModel('showSearch', { type: Boolean, default: false })
+defineEmits(['selectConversation', 'toggleStatus'])
+
+const isResolved = computed(() => props.status === 'resolved')
+
+// Pure client-side filter over the already-loaded thread — Chatwoot has no
+// server-side conversation-scoped search endpoint, so there is nothing to
+// call here; this only ever narrows `messages`, already fetched for display.
+const showSearch = ref(false)
 const searchQuery = ref('')
 const searchInputRef = ref(null)
 
-watch(showSearch, (open) => {
-  if (open) {
+function toggleSearch() {
+  showSearch.value = !showSearch.value
+  if (showSearch.value) {
     nextTick(() => searchInputRef.value?.el?.focus())
   } else {
     searchQuery.value = ''
   }
-})
+}
 
 function clearSearch() {
   searchQuery.value = ''
@@ -214,6 +292,18 @@ const visibleGroupedMessages = computed(() =>
 
 function openFileInAnotherTab(url) {
   window.open(url, '_blank')
+}
+
+// The switcher used to label every tab with the contact's name — useless
+// once a contact has more than one conversation, since every tab reads
+// identically (this is exactly why it shipped confusing: 2 conversations,
+// both "Shivam Gupta", no way to tell them apart without clicking through).
+// Status + recency is what actually distinguishes conversations in Chatwoot's
+// own inbox UI, so mirror that instead.
+function conversationLabel(conv) {
+  const status = conv.status === 'resolved' ? __('Resolved') : __('Open')
+  const last = conv.last_activity_at || conv.timestamp
+  return last ? `${status} · ${timeAgo(last * 1000)}` : status
 }
 
 function formatChatwootMessage(message) {

@@ -13,14 +13,6 @@
     :doc="doc"
     :whatsappBox="whatsappBox"
     :modalRef="modalRef"
-    :chatwoot-conversations="chatwootConversations.data || []"
-    :chatwoot-active-conversation-id="activeChatwootConversationId"
-    :chatwoot-status="activeChatwootStatus"
-    :chatwoot-toggling="chatwootToggleResource.loading"
-    :chatwoot-url="chatwootMessages.data?.chatwoot_url"
-    @select-chatwoot-conversation="selectChatwootConversation"
-    @toggle-chatwoot-status="toggleChatwootStatus"
-    @toggle-chatwoot-search="chatwootShowSearch = !chatwootShowSearch"
   />
   <FadedScrollableDiv class="flex flex-col h-full overflow-y-auto">
     <div
@@ -62,10 +54,16 @@
       </div>
       <div v-else-if="title == 'Chatwoot'">
         <ChatwootArea
-          v-model:show-search="chatwootShowSearch"
           class="px-3 sm:px-10"
           :messages="chatwootMessages.data?.messages || []"
+          :conversations="chatwootConversations.data || []"
           :active-conversation-id="activeChatwootConversationId"
+          :status="activeChatwootStatus"
+          :toggling="chatwootToggleResource.loading"
+          :assignee="chatwootMessages.data?.assignee"
+          :chatwoot-url="chatwootMessages.data?.chatwoot_url"
+          @select-conversation="selectChatwootConversation"
+          @toggle-status="toggleChatwootStatus"
         />
       </div>
       <div
@@ -683,13 +681,6 @@ watch(
 )
 
 const activeChatwootConversationId = ref(null)
-
-// Triggered from ActivityHeader's search icon; the input + results render
-// inline in ChatwootArea, just above the message thread.
-const chatwootShowSearch = ref(false)
-watch(activeChatwootConversationId, () => {
-  chatwootShowSearch.value = false
-})
 
 // Chatwoot itself reports whether a conversation currently accepts new agent
 // replies (e.g. false once a WhatsApp conversation has been outside Meta's
