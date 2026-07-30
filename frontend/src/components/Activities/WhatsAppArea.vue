@@ -1,13 +1,34 @@
 <!-- eslint-disable vue/no-v-html -->
 <template>
   <div>
+    <div v-if="messages.length" class="mb-3 flex items-center gap-2 px-3 sm:px-10">
+      <Tooltip :text="__('Search in this conversation')">
+        <Button
+          size="sm"
+          :variant="showSearch ? 'solid' : 'subtle'"
+          :aria-label="__('Search in this conversation')"
+          @click="toggleSearch"
+        >
+          <span class="lucide-search size-3.5" aria-hidden="true" />
+        </Button>
+      </Tooltip>
+    </div>
+    <ChatSearchBar
+      v-if="showSearch"
+      ref="searchInputRef"
+      v-model="searchQuery"
+      :result-count="filteredGroups.length"
+      @clear="clearSearch"
+      @escape="onSearchEscape"
+    />
     <div
-      v-for="whatsapp in messages"
+      v-for="whatsapp in visibleMessages"
       :key="whatsapp.name"
       class="activity group flex gap-2"
       :class="[
         whatsapp.type == 'Outgoing' ? 'flex-row-reverse' : '',
         whatsapp.reaction ? 'mb-7' : 'mb-3',
+        isGroupStart(whatsapp) ? 'mt-3 first:mt-0' : '',
       ]"
     >
       <div
@@ -15,18 +36,18 @@
         class="group/message relative max-w-[90%] rounded-md bg-surface-gray-1 text-ink-gray-9 p-1.5 pl-2 text-base shadow-sm"
       >
         <Badge
-          v-if="whatsapp.status == 'failed'"
+          v-if="isFailed(whatsapp)"
           theme="red"
-          :label="whatsapp.status"
-          class="absolute -top-2 right-0"
+          :label="__('Failed')"
+          class="absolute -top-2 right-0 z-10"
         />
         <div
           v-if="whatsapp.is_reply"
           class="mb-1 cursor-pointer rounded border-0 border-l-4 bg-surface-gray-3 p-2 text-ink-gray-5"
           :class="
             whatsapp.reply_to_type == 'Incoming'
-              ? 'border-green-500'
-              : 'border-blue-400'
+              ? 'border-outline-green-3'
+              : 'border-outline-blue-3'
           "
           @click="() => scrollToMessage(whatsapp.reply_to)"
         >
@@ -44,7 +65,7 @@
             <div v-if="whatsapp.header" class="text-base-semibold">
               {{ whatsapp.header }}
             </div>
-            <div v-html="formatWhatsAppMessage(whatsapp.reply_message)" />
+            <div v-html="formatWhatsAppMarkup(whatsapp.reply_message)" />
             <div v-if="whatsapp.footer" class="text-xs text-ink-gray-5">
               {{ whatsapp.footer }}
             </div>
@@ -52,23 +73,8 @@
         </div>
         <div class="flex gap-2 justify-between">
           <div
-            v-if="whatsapp.status != 'failed'"
-            class="absolute -right-0.5 -top-0.5 flex cursor-pointer gap-1 rounded-full bg-surface-base pb-2 pl-2 pr-1.5 pt-1.5 opacity-0 group-hover/message:opacity-100"
-            :style="{
-              background:
-                'radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 1) 35%, rgba(238, 130, 238, 0) 100%)',
-            }"
-          >
-            <Dropdown :options="messageOptions(whatsapp)">
-              <span
-                class="lucide-chevron-down size-4 text-ink-gray-5"
-                aria-hidden="true"
-              />
-            </Dropdown>
-          </div>
-          <div
             v-if="whatsapp.reaction"
-            class="absolute -bottom-5 flex gap-1 rounded-full border bg-surface-base p-1 pb-[3px] shadow-sm"
+            class="absolute -bottom-5 flex gap-1 rounded-full border border-outline-gray-1 bg-surface-modal p-1 shadow-sm"
           >
             <div class="flex size-4 items-center justify-center">
               {{ whatsapp.reaction }}
@@ -81,14 +87,14 @@
             <div v-if="whatsapp.header" class="text-base-semibold">
               {{ whatsapp.header }}
             </div>
-            <div v-html="formatWhatsAppMessage(whatsapp.template)" />
+            <div v-html="formatWhatsAppMarkup(whatsapp.template)" />
             <div v-if="whatsapp.footer" class="text-xs text-ink-gray-5">
               {{ whatsapp.footer }}
             </div>
           </div>
           <div
             v-else-if="whatsapp.content_type == 'text'"
-            v-html="formatWhatsAppMessage(whatsapp.message)"
+            v-html="formatWhatsAppMarkup(whatsapp.message)"
           />
           <div
             v-else-if="whatsapp.content_type == 'button'"
@@ -104,14 +110,14 @@
             </span>
             <span
               class="text-sm-medium"
-              v-html="formatWhatsAppMessage(whatsapp.message)"
+              v-html="formatWhatsAppMarkup(whatsapp.message)"
             />
           </div>
           <div
             v-else-if="whatsapp.content_type == 'interactive'"
             class="flex flex-col gap-2"
           >
-            <div v-html="formatWhatsAppMessage(whatsapp.message)" />
+            <div v-html="formatWhatsAppMarkup(whatsapp.message)" />
             <div
               v-if="interactivePayload(whatsapp)?.type == 'button'"
               class="flex flex-wrap gap-1.5 border-t border-outline-gray-2 pt-2"
@@ -119,7 +125,7 @@
               <div
                 v-for="btn in interactivePayload(whatsapp).buttons"
                 :key="btn.id"
-                class="rounded-md border border-outline-gray-2 bg-surface-white px-2.5 py-1 text-sm-medium text-ink-blue-link"
+                class="rounded-md border border-outline-gray-2 bg-surface-modal px-2.5 py-1 text-sm-medium text-ink-blue-link"
               >
                 {{ btn.title }}
               </div>
@@ -142,7 +148,7 @@
                 <div
                   v-for="row in section.rows"
                   :key="row.id"
-                  class="rounded-md border border-outline-gray-2 bg-surface-white px-2.5 py-1.5"
+                  class="rounded-md border border-outline-gray-2 bg-surface-modal px-2.5 py-1.5"
                 >
                   <div class="text-sm-medium text-ink-blue-link">
                     {{ row.title }}
@@ -165,7 +171,7 @@
           />
           <div
             v-else-if="whatsapp.content_type == 'location' && locationPayload(whatsapp)"
-            class="flex w-56 flex-col gap-1 rounded-md border border-outline-gray-2 bg-surface-white p-2.5"
+            class="flex w-56 flex-col gap-1 rounded-md border border-outline-gray-2 bg-surface-modal p-2.5"
           >
             <div class="flex items-center gap-1.5 text-sm-medium text-ink-gray-8">
               <LocationIcon class="size-3.5 shrink-0 text-ink-gray-5" />
@@ -193,7 +199,7 @@
           </div>
           <div
             v-else-if="whatsapp.content_type == 'contact' && contactPayload(whatsapp)"
-            class="flex w-56 flex-col gap-1 rounded-md border border-outline-gray-2 bg-surface-white p-2.5"
+            class="flex w-56 flex-col gap-1 rounded-md border border-outline-gray-2 bg-surface-modal p-2.5"
           >
             <div class="flex items-center gap-1.5 text-sm-medium text-ink-gray-8">
               <ContactIcon class="size-3.5 shrink-0 text-ink-gray-5" />
@@ -211,13 +217,14 @@
           <div v-else-if="whatsapp.content_type == 'image'">
             <img
               :src="whatsapp.attach"
-              class="h-40 cursor-pointer rounded-md"
+              :alt="__('Image attachment')"
+              class="max-h-40 w-auto max-w-full cursor-pointer rounded-md"
               @click="() => openFileInAnotherTab(whatsapp.attach)"
             />
             <div
-              v-if="!whatsapp.message.startsWith('/files/')"
+              v-if="hasCaption(whatsapp)"
               class="mt-1.5"
-              v-html="formatWhatsAppMessage(whatsapp.message)"
+              v-html="formatWhatsAppMarkup(whatsapp.message)"
             />
           </div>
           <div
@@ -225,30 +232,36 @@
             class="flex items-center gap-2"
           >
             <DocumentIcon
-              class="size-10 cursor-pointer rounded-md text-ink-gray-4"
+              class="size-10 shrink-0 cursor-pointer rounded-md text-ink-gray-4"
               @click="() => openFileInAnotherTab(whatsapp.attach)"
             />
-            <div class="text-ink-gray-5">Document</div>
+            <a
+              :href="whatsapp.attach"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="min-w-0 truncate text-ink-blue-link hover:underline"
+            >
+              {{ attachmentLabel(whatsapp) }}
+            </a>
           </div>
           <div
             v-else-if="whatsapp.content_type == 'audio'"
             class="flex items-center gap-2"
           >
-            <audio :src="whatsapp.attach" controls class="cursor-pointer" />
+            <audio :src="whatsapp.attach" controls class="max-w-full" />
           </div>
           <div
             v-else-if="whatsapp.content_type == 'video'"
-            class="flex-col items-center gap-2"
+            class="flex flex-col items-start gap-2"
           >
             <video
               :src="whatsapp.attach"
               controls
-              class="h-40 cursor-pointer rounded-md"
+              class="max-h-40 w-auto max-w-full rounded-md"
             />
             <div
-              v-if="!whatsapp.message.startsWith('/files/')"
-              class="mt-1.5"
-              v-html="formatWhatsAppMessage(whatsapp.message)"
+              v-if="hasCaption(whatsapp)"
+              v-html="formatWhatsAppMarkup(whatsapp.message)"
             />
           </div>
           <div class="-mb-1 flex shrink-0 items-end gap-1 text-ink-gray-5">
@@ -257,39 +270,60 @@
                 {{ formatDate(whatsapp.creation, 'hh:mm a') }}
               </div>
             </Tooltip>
-            <div v-if="whatsapp.type == 'Outgoing'">
-              <CheckIcon
-                v-if="['sent', 'Success'].includes(whatsapp.status)"
-                class="size-4"
-              />
-              <DoubleCheckIcon
-                v-else-if="['read', 'delivered'].includes(whatsapp.status)"
-                class="size-4"
-                :class="{ 'text-ink-blue-5': whatsapp.status == 'read' }"
-              />
-            </div>
+            <DeliveryTick
+              v-if="whatsapp.type == 'Outgoing'"
+              :status="whatsapp.status"
+            />
           </div>
         </div>
-      </div>
-      <div
-        v-if="whatsapp.status != 'failed'"
-        class="flex items-center justify-center opacity-0 transition-all ease-in group-hover:opacity-100"
-      >
-        <IconPicker
-          v-slot="{ togglePopover }"
-          v-model="emoji"
-          v-model:reaction="reaction"
-          @update:modelValue="() => reactOnMessage(whatsapp.name, emoji)"
+        <!-- Per-message actions. These act on THIS message (reply quotes it,
+             a reaction attaches to it), so they belong with the bubble rather
+             than in the thread header, which has no message to target. Kept in
+             normal flow — the previous version floated them over the bubble's
+             top-right corner on a hardcoded white radial gradient, which
+             clipped the first line of text and broke in dark mode. Revealed on
+             hover/focus on pointer devices; always visible on touch, where
+             there is no hover to reveal them with. -->
+        <div
+          v-if="!isFailed(whatsapp)"
+          class="mt-1 flex items-center gap-0.5 border-t border-outline-gray-1 pt-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover/message:opacity-100 sm:focus-within:opacity-100"
+          :class="whatsapp.type == 'Outgoing' ? 'justify-end' : ''"
         >
-          <Button
-            class="rounded-full !size-6 mt-0.5"
-            @click="() => (reaction = true) && togglePopover()"
+          <Tooltip :text="__('Reply')">
+            <Button
+              variant="ghost"
+              size="sm"
+              :aria-label="__('Reply to this message')"
+              @click="() => replyToMessage(whatsapp)"
+            >
+              <template #icon>
+                <span
+                  class="lucide-corner-up-left size-3.5 text-ink-gray-5"
+                  aria-hidden="true"
+                />
+              </template>
+            </Button>
+          </Tooltip>
+          <IconPicker
+            v-slot="{ togglePopover }"
+            v-model="emoji"
+            v-model:reaction="reaction"
+            @update:modelValue="() => reactOnMessage(whatsapp.name, emoji)"
           >
-            <template #icon>
-              <ReactIcon class="text-ink-gray-3" />
-            </template>
-          </Button>
-        </IconPicker>
+            <Tooltip :text="__('React')">
+              <Button
+                variant="ghost"
+                size="sm"
+                :aria-label="__('React to this message')"
+                @click="() => (reaction = true) && togglePopover()"
+              >
+                <template #icon>
+                  <ReactIcon class="size-3.5 text-ink-gray-5" />
+                </template>
+              </Button>
+            </Tooltip>
+          </IconPicker>
+        </div>
       </div>
     </div>
   </div>
@@ -297,25 +331,89 @@
 
 <script setup>
 import IconPicker from '@/components/IconPicker.vue'
-import CheckIcon from '@/components/Icons/CheckIcon.vue'
-import DoubleCheckIcon from '@/components/Icons/DoubleCheckIcon.vue'
 import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
 import ReactIcon from '@/components/Icons/ReactIcon.vue'
 import WhatsAppFlowMessage from '@/components/Activities/WhatsAppFlowMessage.vue'
 import LocationIcon from '@/components/Icons/LocationIcon.vue'
 import ContactIcon from '@/components/Icons/ContactIcon.vue'
-import { formatDate, sanitizeHTML } from '@/utils'
+import ChatSearchBar from '@/components/Activities/ChatSearchBar.vue'
+import DeliveryTick from '@/components/Activities/DeliveryTick.vue'
+import {
+  formatWhatsAppMarkup,
+  useMessageGrouping,
+  useMessageSearch,
+} from '@/composables/useChatMessages'
+import { formatDate } from '@/utils'
 import { useTelemetry } from 'frappe-ui/frappe'
-import { Tooltip, Dropdown, createResource, toast } from 'frappe-ui'
-import { ref } from 'vue'
+import {
+  Badge,
+  Tooltip,
+  Button,
+  createResource,
+  dayjs,
+  toast,
+} from 'frappe-ui'
+import { computed, ref, toRef } from 'vue'
 
-defineProps({
+const props = defineProps({
   messages: { type: Array, default: () => [] },
 })
 
 const list = defineModel({ type: Object })
 
 const { capture } = useTelemetry()
+
+// Grouping and search come from the shared chat primitives, so this thread and
+// the Chatwoot thread behave identically. The adapters below translate the
+// WhatsApp Message doctype's own vocabulary into the neutral shape those
+// primitives expect: `creation` is a SQL datetime string (not Chatwoot's epoch
+// seconds), direction lives in `type` as 'Incoming'/'Outgoing', and there is no
+// sender object at all — a thread is already one contact, so the phone number
+// on the row is the only sender identity available.
+const groupedMessages = useMessageGrouping(toRef(props, 'messages'), {
+  direction: (m) => (m.type === 'Outgoing' ? 'outgoing' : 'incoming'),
+  timestamp: (m) => (m.creation ? dayjs(m.creation).unix() : 0),
+  senderId: (m) => (m.type === 'Outgoing' ? 'self' : m.from || m.profile_name || null),
+  id: (m) => m.name,
+  // A reaction pins a floating badge below its bubble and a reply renders a
+  // quoted block above it; merging either into a tight run overlaps them with
+  // the neighbouring bubble, so both always stand alone.
+  standalone: (m) => Boolean(m.reaction || m.is_reply),
+})
+
+const {
+  showSearch,
+  searchQuery,
+  searchInputRef,
+  filteredGroups,
+  visibleGroups,
+  toggleSearch,
+  clearSearch,
+  onSearchEscape,
+} = useMessageSearch(groupedMessages, {
+  // Search the rendered body, the template body and the caption — whichever
+  // this row actually carries.
+  text: (m) => `${m.message || ''} ${m.template || ''}`,
+})
+
+// The bubble template is per-message rather than per-group, so groups are
+// flattened back to a flat list for rendering. Deliberately NOT spread into new
+// objects: `interactivePayload` memoises parsed JSON in a WeakMap keyed on the
+// message object itself, and a fresh copy per recompute would never hit that
+// cache — re-parsing on every render, several times per bubble. The original
+// row objects are passed through untouched and the run boundary is tracked in a
+// parallel Set of message names instead.
+const visibleMessages = computed(() =>
+  visibleGroups.value.flatMap((group) => group.messages),
+)
+
+const groupStartNames = computed(
+  () => new Set(visibleGroups.value.map((group) => group.messages[0]?.name)),
+)
+
+function isGroupStart(whatsapp) {
+  return groupStartNames.value.has(whatsapp.name)
+}
 
 // Parses a WhatsApp Message's `buttons` JSON field (set by
 // crm.api.whatsapp.send_whatsapp_interactive) into the shape the template
@@ -393,27 +491,34 @@ function openFileInAnotherTab(url) {
   window.open(url, '_blank')
 }
 
-function formatWhatsAppMessage(message) {
-  // if message contains _text_, make it italic
-  message = message.replace(/_(.*?)_/g, '<i>$1</i>')
-  // if message contains *text*, make it bold
-  message = message.replace(/\*(.*?)\*/g, '<b>$1</b>')
-  // if message contains ~text~, make it strikethrough
-  message = message.replace(/~(.*?)~/g, '<s>$1</s>')
-  // if message contains ```text```, make it monospace
-  message = message.replace(/```(.*?)```/g, '<code>$1</code>')
-  // if message contains `text`, make it inline code
-  message = message.replace(/`(.*?)`/g, '<code>$1</code>')
-  // if message contains > text, make it a blockquote
-  message = message.replace(/^> (.*)$/gm, '<blockquote>$1</blockquote>')
-  // if contain /n, make it a new line
-  message = message.replace(/\n/g, '<br>')
-  // if contains *<space>text, make it a bullet point
-  message = message.replace(/\* (.*?)(?=\s*\*|$)/g, '<li>$1</li>')
-  message = message.replace(/- (.*?)(?=\s*-|$)/g, '<li>$1</li>')
-  message = message.replace(/(\d+)\. (.*?)(?=\s*(\d+)\.|$)/g, '<li>$2</li>')
+// The WhatsApp Message doctype's `status` is a free-text Data field, not an
+// enum: it carries app-level values ('Success', 'Failed') alongside Meta's own
+// lowercase webhook strings ('sent', 'delivered', 'read'). A bare
+// `status == 'failed'` therefore misses a row saved as 'Failed', which is what
+// the app's own send path writes on error — so compare case-insensitively.
+const FAILED_STATUSES = ['failed', 'failure', 'error']
 
-  return sanitizeHTML(message)
+function isFailed(whatsapp) {
+  return FAILED_STATUSES.includes((whatsapp?.status || '').trim().toLowerCase())
+}
+
+// Inbound media arrives with the file path echoed into `message` when the
+// sender attached no caption — rendering that path as the caption shows the
+// user a raw '/files/...' string under their own image. Also guards the case
+// where `message` is absent entirely, which crashed the previous
+// `.startsWith()` check outright.
+function hasCaption(whatsapp) {
+  const message = whatsapp?.message
+  if (typeof message !== 'string' || !message.trim()) return false
+  return !message.startsWith('/files/') && !message.startsWith('/private/files/')
+}
+
+// Documents carry no filename field, so fall back to the basename of the
+// stored file URL before a generic label.
+function attachmentLabel(whatsapp) {
+  const url = whatsapp?.attach || ''
+  const basename = url.split('?')[0].split('/').pop()
+  return basename ? decodeURIComponent(basename) : __('Document')
 }
 
 const emoji = ref('')
@@ -440,39 +545,35 @@ function reactOnMessage(name, emoji) {
 }
 
 const reply = defineModel('reply', { type: Object, default: () => ({}) })
-const replyMode = ref(false)
 
-function messageOptions(message) {
-  return [
-    {
-      label: 'Reply',
-      onClick: () => {
-        replyMode.value = true
-        reply.value = {
-          ...message,
-          message: formatWhatsAppMessage(message.message),
-        }
-      },
-    },
-    // {
-    //   label: 'Forward',
-    //   onClick: () => console.log('Forward'),
-    // },
-    // {
-    //   label: 'Delete',
-    //   onClick: () => console.log('Delete'),
-    // },
-  ]
+// Loads a message into the composer's quoted-reply slot. Previously reached
+// through a single-item hover Dropdown; now a direct button, since a one-option
+// menu was a click of pure overhead.
+function replyToMessage(message) {
+  reply.value = {
+    ...message,
+    message: formatWhatsAppMarkup(message.message),
+  }
 }
 
 function scrollToMessage(name) {
+  if (!name) return
+  // The quoted message may not be in the DOM at all — replies commonly point
+  // at messages older than the currently-loaded page, and the previous
+  // implementation threw on the resulting null.
   const element = document.getElementById(name)
-  element.scrollIntoView({ behavior: 'smooth' })
+  if (!element) {
+    toast.error(__('That message is not loaded in this conversation yet'))
+    return
+  }
+  element.scrollIntoView({ behavior: 'smooth', block: 'center' })
 
-  // Highlight the message
-  element.classList.add('bg-yellow-100')
+  // Brief highlight so the eye lands on the right bubble. Uses the same
+  // surface token as the rest of the thread so it reads correctly in dark mode
+  // (the previous bg-yellow-100 was a hardcoded light-mode-only colour).
+  element.classList.add('ring-2', 'ring-outline-amber-2')
   setTimeout(() => {
-    element.classList.remove('bg-yellow-100')
-  }, 1000)
+    element.classList.remove('ring-2', 'ring-outline-amber-2')
+  }, 1200)
 }
 </script>

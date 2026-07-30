@@ -69,34 +69,16 @@
         </Tooltip>
       </div>
     </div>
-    <div v-if="showSearch" class="mb-3 px-3 sm:px-10">
-      <TextInput
-        ref="searchInputRef"
-        v-model="searchQuery"
-        :placeholder="__('Search in this chat')"
-        class="w-full"
-        @keydown.esc="onSearchEscape"
-      >
-        <template #prefix>
-          <span class="lucide-search size-4 text-ink-gray-6" aria-hidden="true" />
-        </template>
-        <template v-if="searchQuery" #suffix>
-          <span
-            class="lucide-x size-4 cursor-pointer text-ink-gray-5 hover:text-ink-gray-7"
-            aria-hidden="true"
-            @click="clearSearch"
-          />
-        </template>
-      </TextInput>
-      <div
-        v-if="searchQuery && !filteredGroupedMessages.length"
-        class="mt-3 text-center text-p-sm text-ink-gray-5"
-      >
-        {{ __('No messages found for "{0}"', [searchQuery]) }}
-      </div>
-    </div>
+    <ChatSearchBar
+      v-if="showSearch"
+      ref="searchInputRef"
+      v-model="searchQuery"
+      :result-count="filteredGroups.length"
+      @clear="clearSearch"
+      @escape="onSearchEscape"
+    />
     <div
-      v-for="group in visibleGroupedMessages"
+      v-for="group in visibleGroups"
       :key="group.key"
       class="group flex gap-2 mb-3"
       :class="[group.direction == 'outgoing' ? 'justify-end' : '']"
@@ -104,7 +86,7 @@
       <div
         v-if="group.direction == 'activity'"
         class="w-full text-center text-2xs text-ink-gray-4"
-        v-html="formatChatwootMessage(group.messages[0].content)"
+        v-html="formatPlainMessage(group.messages[0].content)"
       />
       <div v-else class="flex max-w-[90%] flex-col gap-0.5">
         <div
@@ -121,7 +103,7 @@
           </div>
           <div
             v-if="message.content"
-            v-html="formatChatwootMessage(message.content)"
+            v-html="formatPlainMessage(message.content)"
           />
           <div v-else class="italic text-ink-gray-5">
             {{ templateFallbackLabel(message) }}
@@ -134,16 +116,33 @@
               <img
                 v-if="att.file_type == 'image'"
                 :src="att.data_url"
-                class="h-40 cursor-pointer rounded-md"
+                :alt="__('Image attachment')"
+                class="max-h-40 w-auto max-w-full cursor-pointer rounded-md"
                 @click="() => openFileInAnotherTab(att.data_url)"
+              />
+              <video
+                v-else-if="att.file_type == 'video'"
+                :src="att.data_url"
+                controls
+                class="max-h-40 w-auto max-w-full rounded-md"
+              />
+              <audio
+                v-else-if="att.file_type == 'audio'"
+                :src="att.data_url"
+                controls
+                class="max-w-full"
               />
               <a
                 v-else
                 :href="att.data_url"
                 target="_blank"
-                class="flex items-center gap-2 text-ink-blue-link underline"
+                rel="noopener noreferrer"
+                class="flex items-center gap-2 text-ink-blue-link hover:underline"
               >
-                {{ __('Attachment') }}
+                <DocumentIcon class="size-8 shrink-0 text-ink-gray-4" />
+                <span class="truncate">
+                  {{ attachmentLabel(att) }}
+                </span>
               </a>
             </div>
           </div>
@@ -169,9 +168,17 @@
 </template>
 
 <script setup>
-import { Tooltip, Button, TextInput } from 'frappe-ui'
-import { computed, h, nextTick, ref, watch } from 'vue'
-import { formatDate, sanitizeHTML, timeAgo } from '@/utils'
+import ChatSearchBar from '@/components/Activities/ChatSearchBar.vue'
+import DeliveryTick from '@/components/Activities/DeliveryTick.vue'
+import DocumentIcon from '@/components/Icons/DocumentIcon.vue'
+import { Tooltip, Button } from 'frappe-ui'
+import { computed, toRef } from 'vue'
+import {
+  formatPlainMessage,
+  useMessageGrouping,
+  useMessageSearch,
+} from '@/composables/useChatMessages'
+import { formatDate, timeAgo } from '@/utils'
 
 const props = defineProps({
   messages: { type: Array, default: () => [] },
@@ -187,108 +194,37 @@ defineEmits(['selectConversation', 'toggleStatus'])
 
 const isResolved = computed(() => props.status === 'resolved')
 
-// Pure client-side filter over the already-loaded thread — Chatwoot has no
-// server-side conversation-scoped search endpoint, so there is nothing to
-// call here; this only ever narrows `messages`, already fetched for display.
-const showSearch = ref(false)
-const searchQuery = ref('')
-const searchInputRef = ref(null)
-
-function toggleSearch() {
-  showSearch.value = !showSearch.value
-  if (showSearch.value) {
-    nextTick(() => searchInputRef.value?.el?.focus())
-  } else {
-    searchQuery.value = ''
-  }
-}
-
-function clearSearch() {
-  searchQuery.value = ''
-  nextTick(() => searchInputRef.value?.el?.focus())
-}
-
-// Escape clears first, closes the bar on a second press — same ladder as
-// the reference implementation this mirrors.
-function onSearchEscape() {
-  if (searchQuery.value) {
-    searchQuery.value = ''
-  } else {
-    showSearch.value = false
-  }
-}
-
-// Switching conversations should never leave a stale query/open bar behind.
-watch(
-  () => props.activeConversationId,
-  () => {
-    showSearch.value = false
-    searchQuery.value = ''
-  },
-)
-
-// Consecutive messages from the same sender within a 60s window merge into
-// one visual run (one avatar/name label, tight inner gap) — matching
-// WhatsApp Web / Stream Chat's published default grouping window. Activity
-// (system) messages and a message_type change (incoming <-> outgoing) always
-// start a new group even if inside the window.
-const GROUP_WINDOW_SECONDS = 60
-
-const groupedMessages = computed(() => {
-  const groups = []
-  for (const message of props.messages) {
-    const direction = message.direction || 'unknown'
-    const last = groups[groups.length - 1]
-    const sameBucket =
-      last &&
-      last.direction === direction &&
-      direction !== 'activity' &&
-      last.senderId === (message.sender?.id ?? message.sender?.name ?? null) &&
-      message.created_at - last.lastCreatedAt <= GROUP_WINDOW_SECONDS
-
-    if (sameBucket) {
-      last.messages.push(message)
-      last.lastCreatedAt = message.created_at
-    } else {
-      groups.push({
-        key: `${direction}-${message.id}`,
-        direction,
-        senderId: message.sender?.id ?? message.sender?.name ?? null,
-        lastCreatedAt: message.created_at,
-        messages: [message],
-      })
-    }
-  }
-  return groups
+// Grouping and search both come from the shared chat primitives so this
+// thread and the WhatsApp thread behave identically. Chatwoot's messages
+// carry epoch-second `created_at` and a server-annotated `direction`.
+const groupedMessages = useMessageGrouping(toRef(props, 'messages'), {
+  direction: (m) => m.direction || 'unknown',
+  timestamp: (m) => m.created_at || 0,
+  senderId: (m) => m.sender?.id ?? m.sender?.name ?? null,
+  id: (m) => m.id,
 })
 
-// Filters ALREADY-GROUPED messages by text content — groups are filtered
-// down to just the matching messages within them rather than dropping whole
-// groups, so a single hit inside a multi-message run still renders with its
-// group's sender/avatar context intact. Activity (system) groups have no
-// searchable "content" worth matching against and are dropped entirely once
-// a query is active, matching the reference implementation's intent (this is
-// a message search, not a system-log search).
-const filteredGroupedMessages = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase()
-  if (!query) return groupedMessages.value
-
-  const result = []
-  for (const group of groupedMessages.value) {
-    if (group.direction === 'activity') continue
-    const matches = group.messages.filter((m) =>
-      (m.content || '').toLowerCase().includes(query),
-    )
-    if (matches.length) {
-      result.push({ ...group, messages: matches })
-    }
-  }
-  return result
+const {
+  showSearch,
+  searchQuery,
+  searchInputRef,
+  filteredGroups,
+  visibleGroups,
+  toggleSearch,
+  clearSearch,
+  onSearchEscape,
+} = useMessageSearch(groupedMessages, {
+  text: (m) => m.content || '',
+  resetOn: toRef(props, 'activeConversationId'),
 })
 
-const visibleGroupedMessages = computed(() =>
-  searchQuery.value.trim() ? filteredGroupedMessages.value : groupedMessages.value,
-)
+// Chatwoot's attachment objects carry no filename field of their own, so fall
+// back to the basename of the storage URL before a generic label.
+function attachmentLabel(attachment) {
+  const url = attachment?.data_url || ''
+  const basename = url.split('?')[0].split('/').pop()
+  return basename ? decodeURIComponent(basename) : __('Attachment')
+}
 
 function openFileInAnotherTab(url) {
   window.open(url, '_blank')
@@ -306,12 +242,6 @@ function conversationLabel(conv) {
   return last ? `${status} · ${timeAgo(last * 1000)}` : status
 }
 
-function formatChatwootMessage(message) {
-  if (!message) return ''
-  message = message.replace(/\n/g, '<br>')
-  return sanitizeHTML(message)
-}
-
 // Chatwoot's own /messages response never echoes the rendered template body
 // back in `content` for a template send — only in `additional_attributes.
 // template_params.name`, the Meta template's machine name. Surface that
@@ -319,37 +249,5 @@ function formatChatwootMessage(message) {
 function templateFallbackLabel(message) {
   const name = message.additional_attributes?.template_params?.name
   return name ? __('Template: {0}', [name]) : __('Template message')
-}
-
-// Delivery tick — visual state only (no text label), mirroring WhatsApp's own
-// semantics: clock (sending/pending local echo) -> single check (sent) ->
-// double check grey (delivered) -> double check blue (read) -> red ! (failed).
-// Chatwoot's message object carries this natively as `status`.
-const DeliveryTick = {
-  props: { status: { type: String, default: '' } },
-  render() {
-    const status = this.status
-    if (status === 'failed') {
-      return h('span', {
-        class: 'lucide-alert-circle size-3.5 text-ink-red-3',
-        title: __('Failed to send'),
-      })
-    }
-    if (status === 'read') {
-      return h('span', {
-        class: 'lucide-check-check size-3.5 text-ink-blue-4',
-      })
-    }
-    if (status === 'delivered') {
-      return h('span', {
-        class: 'lucide-check-check size-3.5 text-ink-gray-5',
-      })
-    }
-    if (status === 'sent') {
-      return h('span', { class: 'lucide-check size-3.5 text-ink-gray-5' })
-    }
-    // sending / progress / no status yet -> local-echo "pending" clock
-    return h('span', { class: 'lucide-clock size-3 text-ink-gray-4' })
-  },
 }
 </script>

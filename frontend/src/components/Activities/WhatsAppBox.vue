@@ -2,11 +2,15 @@
 <template>
   <div
     v-if="reply?.message"
-    class="flex items-center justify-around gap-2 px-3 pt-2 sm:px-10"
+    class="flex items-center gap-2 px-3 pt-2 sm:px-10"
   >
     <div
-      class="mb-1 ml-13 flex-1 cursor-pointer rounded border-0 border-l-4 border-green-500 bg-surface-gray-2 p-2 text-base text-ink-gray-5"
-      :class="reply.type == 'Incoming' ? 'border-green-500' : 'border-blue-400'"
+      class="mb-1 min-w-0 flex-1 cursor-pointer rounded border-0 border-l-4 bg-surface-gray-2 p-2 text-base text-ink-gray-5"
+      :class="
+        reply.type == 'Incoming'
+          ? 'border-outline-green-3'
+          : 'border-outline-blue-3'
+      "
     >
       <div
         class="mb-1 text-sm-bold"
@@ -64,8 +68,18 @@
       :placeholder="placeholder"
       @focus="rows = 6"
       @blur="rows = 1"
-      @keydown.enter.stop="(e) => sendTextMessage(e)"
+      @keydown="onKeydown"
+      @compositionstart="isComposing = true"
+      @compositionend="isComposing = false"
     />
+    <Button
+      variant="solid"
+      class="shrink-0"
+      :disabled="!content.trim() && !whatsapp.attach"
+      @click="sendTextMessage()"
+    >
+      {{ __('Send') }}
+    </Button>
   </div>
 </template>
 
@@ -75,6 +89,7 @@ import SmileIcon from '@/components/Icons/SmileIcon.vue'
 import { sanitizeHTML } from '@/utils'
 import { useTelemetry } from 'frappe-ui/frappe'
 import {
+  Button,
   createResource,
   Textarea,
   FileUploader,
@@ -112,16 +127,39 @@ function uploadFile(file) {
   capture('whatsapp_upload_file')
 }
 
-function sendTextMessage(event) {
-  if (event.shiftKey) return
+// IME composition guard: while an IME (Hindi/Japanese/Chinese input, or an
+// emoji-picker candidate list) is composing, the Enter keystroke that commits
+// the candidate also fires as a normal 'Enter' keydown. Treating that as "send"
+// swallows the user's half-composed text and sends garbage — so both the
+// browser's own `event.isComposing` and the legacy keyCode 229 fallback (older
+// Safari and some Android WebViews don't set isComposing reliably) are checked
+// before Enter is ever treated as submit. Mirrors ChatwootBox exactly.
+const isComposing = ref(false)
+
+function isComposingEvent(event) {
+  return isComposing.value || event.isComposing || event.keyCode === 229
+}
+
+function onKeydown(event) {
+  if (event.key !== 'Enter') return
+  if (isComposingEvent(event)) return
+  if (event.shiftKey) return // Shift+Enter = newline, never sends
+  event.preventDefault()
+  event.stopPropagation()
+  sendTextMessage()
+}
+
+function sendTextMessage() {
+  // An empty send used to be reachable via Enter on a blank composer, which
+  // posted a message with no body.
+  if (!content.value.trim() && !whatsapp.value.attach) return
   sendWhatsAppMessage()
-  textareaRef.value.el?.blur()
-  content.value = ''
+  textareaRef.value?.el?.blur()
   capture('whatsapp_send_message')
 }
 
 async function sendWhatsAppMessage() {
-  let args = {
+  const args = {
     reference_doctype: props.doctype,
     reference_name: doc.value.name,
     message: content.value,
@@ -130,17 +168,35 @@ async function sendWhatsAppMessage() {
     reply_to: reply.value?.name || '',
     content_type: whatsapp.value.content_type,
   }
+
+  // Snapshot what the composer is about to lose, so a failed send can hand the
+  // user's own text back instead of discarding it. The optimistic clear stays —
+  // it keeps the composer responsive — but it is now reversible.
+  const previous = {
+    content: content.value,
+    attach: whatsapp.value.attach,
+    contentType: whatsapp.value.content_type,
+    fileType: fileType.value,
+    reply: reply.value,
+  }
+
   content.value = ''
   fileType.value = ''
   whatsapp.value.attach = ''
   whatsapp.value.content_type = 'text'
   reply.value = {}
+
   createResource({
     url: 'crm.api.whatsapp.create_whatsapp_message',
     params: args,
     auto: true,
     onSuccess: () => whatsapp.value.reload(),
     onError: (error) => {
+      content.value = previous.content
+      whatsapp.value.attach = previous.attach
+      whatsapp.value.content_type = previous.contentType
+      fileType.value = previous.fileType
+      reply.value = previous.reply
       toast.error(error.messages?.[0] || __('Failed to send WhatsApp message'))
     },
   })
