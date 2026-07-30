@@ -360,17 +360,19 @@ def _provision_endpoint(agent, settings):
 	base_username = base_username[:20]
 	password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(20))
 
-	# Plivo restricts the alias to "Letters, Numbers, . + @ - _" — it rejects a
-	# space (and anything else outside that set) with a 400. `user_name` is a
-	# free-text display name that very often contains a space ("Shivam Gupta"),
-	# so it can't be sent raw the way it was, or every such agent's browser
-	# calling fails to provision. Sanitize to the allowed set, collapsing
-	# spaces to underscores, and fall back to the (already-safe) derived
-	# username if nothing usable remains.
+	# Plivo restricts the alias to ASCII "Letters, Numbers, . + @ - _" — it
+	# rejects a space (and anything else outside that set) with a 400.
+	# `user_name` is a free-text display name that very often contains a space
+	# ("Shivam Gupta"), and may contain accented or non-Latin characters
+	# ("José", Hindi names) — all of which Plivo rejects. `str.isalnum()` is NOT
+	# safe here: it returns True for 'é'/'ä'/Devanagari, so it must not be used
+	# to gate allowed characters. Restrict to an explicit ASCII allowlist,
+	# collapse spaces to underscores, drop everything else, and fall back to the
+	# already-safe derived username if nothing usable remains.
+	ascii_allowed = set(string.ascii_letters + string.digits + ".+@-_")
 	raw_alias = agent.user_name or agent.user
 	alias = "".join(
-		ch if (ch.isalnum() or ch in ".+@-_") else ("_" if ch == " " else "")
-		for ch in raw_alias
+		ch if ch in ascii_allowed else ("_" if ch == " " else "") for ch in raw_alias
 	)
 	alias = (alias.strip("_") or base_username)[:64]
 
