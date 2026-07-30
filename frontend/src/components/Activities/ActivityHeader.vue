@@ -88,78 +88,12 @@
     </div>
     <!-- Chatwoot has no create-new action of its own (no "start conversation"
     endpoint exists — conversations only originate from the customer's side or
-    from Chatwoot itself), so instead of the generic New dropdown it gets the
-    conversation switcher + Resolve/Search/Open-in-Chatwoot controls, living
-    in the same header row as every other tab's actions rather than floating
-    as a separate card inside the message body. -->
-    <div
-      v-else-if="title == 'Chatwoot' && chatwootActiveConversationId"
-      class="flex flex-wrap items-center justify-end gap-1.5"
-    >
-      <div
-        v-if="chatwootConversations.length > 1"
-        class="flex flex-wrap gap-1 rounded-lg bg-surface-gray-2 p-1"
-      >
-        <button
-          v-for="conv in chatwootConversations"
-          :key="conv.id"
-          type="button"
-          class="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-p-sm transition-colors"
-          :class="
-            conv.id === chatwootActiveConversationId
-              ? 'bg-surface-white text-ink-gray-9 text-sm-medium shadow-sm'
-              : 'text-ink-gray-5 hover:text-ink-gray-7'
-          "
-          @click="$emit('selectChatwootConversation', conv.id)"
-        >
-          <span
-            class="size-1.5 shrink-0 rounded-full"
-            :class="conv.status === 'resolved' ? 'bg-ink-gray-4' : 'bg-ink-green-3'"
-          />
-          {{ chatwootConversationLabel(conv) }}
-          <span
-            v-if="conv.unread_count"
-            class="rounded-full bg-surface-red-2 px-1.5 text-2xs text-ink-red-4"
-          >
-            {{ conv.unread_count }}
-          </span>
-        </button>
-      </div>
-      <Button
-        size="sm"
-        variant="subtle"
-        :loading="chatwootToggling"
-        @click="$emit('toggleChatwootStatus', chatwootStatus === 'resolved' ? 'open' : 'resolved')"
-      >
-        <template #prefix>
-          <span
-            :class="chatwootStatus === 'resolved' ? 'lucide-rotate-ccw' : 'lucide-check-circle'"
-            class="size-3.5"
-            aria-hidden="true"
-          />
-        </template>
-        {{ chatwootStatus === 'resolved' ? __('Reopen') : __('Resolve') }}
-      </Button>
-      <Tooltip :text="__('Search in this conversation')">
-        <Button
-          size="sm"
-          variant="subtle"
-          @click="$emit('toggleChatwootSearch')"
-        >
-          <span class="lucide-search size-3.5" aria-hidden="true" />
-        </Button>
-      </Tooltip>
-      <Tooltip v-if="chatwootUrl" :text="__('Open in Chatwoot')">
-        <a
-          :href="chatwootUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="flex size-7 items-center justify-center rounded text-ink-gray-5 hover:bg-surface-gray-1 hover:text-ink-gray-8"
-        >
-          <span class="lucide-external-link size-3.5" aria-hidden="true" />
-        </a>
-      </Tooltip>
-    </div>
+    from Chatwoot itself) and no case for it below, so it used to silently
+    fall into the generic dropdown meant for tabs like Activity/Data. That
+    dropdown's options (Email, Comment, Log a Call, WhatsApp Message, etc.)
+    are unrelated to Chatwoot and one of them ("WhatsApp Message") would jump
+    the user to a different tab — confusing, so we just show nothing here. -->
+    <template v-else-if="title == 'Chatwoot'" />
     <Dropdown v-else :options="defaultActions" @click.stop>
       <template #default="{ open }">
         <Button
@@ -188,9 +122,8 @@ import ContactIcon from '@/components/Icons/ContactIcon.vue'
 import { globalStore } from '@/stores/global'
 import { whatsappEnabled } from '@/composables/whatsapp'
 import { callEnabled } from '@/composables/telephony'
-import { Dropdown, Button, Tooltip } from 'frappe-ui'
+import { Dropdown } from 'frappe-ui'
 import { computed, h } from 'vue'
-import { timeAgo } from '@/utils'
 
 const props = defineProps({
   tabs: { type: Array, default: () => [] },
@@ -198,16 +131,9 @@ const props = defineProps({
   doc: { type: Object, default: () => ({}) },
   modalRef: { type: Object, default: () => ({}) },
   whatsappBox: { type: Object, default: () => ({}) },
-  chatwootConversations: { type: Array, default: () => [] },
-  chatwootActiveConversationId: { type: [Number, String], default: null },
-  chatwootStatus: { type: String, default: 'open' },
-  chatwootToggling: { type: Boolean, default: false },
-  chatwootUrl: { type: String, default: null },
 })
 
 const { makeCall } = globalStore()
-
-defineEmits(['selectChatwootConversation', 'toggleChatwootStatus', 'toggleChatwootSearch'])
 
 const tabIndex = defineModel({ type: Number })
 const showWhatsappTemplates = defineModel('showWhatsappTemplates', {
@@ -285,16 +211,6 @@ const defaultActions = computed(() => {
 
 function getTabIndex(name) {
   return props.tabs.findIndex((tab) => tab.name === name)
-}
-
-// The switcher used to label every tab with the contact's name — useless
-// once a contact has more than one conversation, since every tab reads
-// identically. Status + recency is what actually distinguishes conversations
-// in Chatwoot's own inbox UI, so mirror that instead.
-function chatwootConversationLabel(conv) {
-  const status = conv.status === 'resolved' ? __('Resolved') : __('Open')
-  const last = conv.last_activity_at || conv.timestamp
-  return last ? `${status} · ${timeAgo(last * 1000)}` : status
 }
 
 const whatsappMoreActions = computed(() => [

@@ -2,11 +2,88 @@
 <template>
   <div>
     <div
-      v-if="activeConversationId && assignee?.name"
-      class="mb-3 flex items-center gap-1.5 px-3 text-p-sm text-ink-gray-7 sm:px-10"
+      v-if="activeConversationId"
+      class="mx-3 mb-3 rounded-lg border bg-surface-gray-1 sm:mx-10"
     >
-      <Avatar :image="assignee.avatar" :label="assignee.name" size="sm" />
-      <span>{{ __('Assigned to {0}', [assignee.name]) }}</span>
+      <div
+        v-if="conversations.length > 1"
+        class="flex flex-wrap gap-1 border-b p-1.5"
+      >
+        <button
+          v-for="conv in conversations"
+          :key="conv.id"
+          type="button"
+          class="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-p-sm transition-colors"
+          :class="
+            conv.id === activeConversationId
+              ? 'bg-surface-white text-ink-gray-9 text-sm-medium shadow-sm'
+              : 'text-ink-gray-5 hover:bg-surface-white/60 hover:text-ink-gray-7'
+          "
+          @click="$emit('selectConversation', conv.id)"
+        >
+          <span
+            class="size-1.5 shrink-0 rounded-full"
+            :class="conv.status === 'resolved' ? 'bg-ink-gray-4' : 'bg-ink-green-3'"
+          />
+          {{ conversationLabel(conv) }}
+          <span
+            v-if="conv.unread_count"
+            class="rounded-full bg-surface-red-2 px-1.5 text-2xs text-ink-red-4"
+          >
+            {{ conv.unread_count }}
+          </span>
+        </button>
+      </div>
+      <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 p-2 pl-3">
+        <div
+          v-if="assignee?.name"
+          class="flex items-center gap-1.5 text-p-sm text-ink-gray-7"
+        >
+          <Avatar :image="assignee.avatar" :label="assignee.name" size="sm" />
+          <span>{{ __('Assigned to {0}', [assignee.name]) }}</span>
+        </div>
+        <div v-else class="text-p-sm text-ink-gray-5">
+          {{ isResolved ? __('This conversation is resolved') : __('Unassigned conversation') }}
+        </div>
+        <div class="flex shrink-0 items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="subtle"
+            :loading="toggling"
+            @click="$emit('toggleStatus', isResolved ? 'open' : 'resolved')"
+          >
+            <template #prefix>
+              <span
+                :class="isResolved ? 'lucide-rotate-ccw' : 'lucide-check-circle'"
+                class="size-3.5"
+                aria-hidden="true"
+              />
+            </template>
+            {{ isResolved ? __('Reopen') : __('Resolve') }}
+          </Button>
+          <div class="h-4 w-px bg-outline-gray-2" />
+          <Tooltip :text="__('Search in this conversation')">
+            <Button
+              size="sm"
+              variant="ghost"
+              :class="showSearch ? 'bg-surface-gray-3' : ''"
+              @click="toggleSearch"
+            >
+              <span class="lucide-search size-3.5" aria-hidden="true" />
+            </Button>
+          </Tooltip>
+          <Tooltip v-if="chatwootUrl" :text="__('Open in Chatwoot')">
+            <a
+              :href="chatwootUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex size-7 items-center justify-center rounded text-ink-gray-5 hover:bg-surface-white hover:text-ink-gray-8"
+            >
+              <span class="lucide-external-link size-3.5" aria-hidden="true" />
+            </a>
+          </Tooltip>
+        </div>
+      </div>
     </div>
     <div v-if="showSearch" class="mb-3 px-3 sm:px-10">
       <TextInput
@@ -108,30 +185,39 @@
 </template>
 
 <script setup>
-import { Tooltip, TextInput, Avatar } from 'frappe-ui'
+import { Tooltip, Button, TextInput, Avatar } from 'frappe-ui'
 import { computed, h, nextTick, ref, watch } from 'vue'
-import { formatDate, sanitizeHTML } from '@/utils'
+import { formatDate, sanitizeHTML, timeAgo } from '@/utils'
 
 const props = defineProps({
   messages: { type: Array, default: () => [] },
+  conversations: { type: Array, default: () => [] },
   activeConversationId: { type: [Number, String], default: null },
+  status: { type: String, default: 'open' },
+  toggling: { type: Boolean, default: false },
   assignee: { type: Object, default: null },
+  chatwootUrl: { type: String, default: null },
 })
 
-// Search is triggered from ActivityHeader's search icon (shared header row
-// with every other tab's actions); the input + results still render here,
-// inline above the message thread.
-const showSearch = defineModel('showSearch', { type: Boolean, default: false })
+defineEmits(['selectConversation', 'toggleStatus'])
+
+const isResolved = computed(() => props.status === 'resolved')
+
+// Pure client-side filter over the already-loaded thread — Chatwoot has no
+// server-side conversation-scoped search endpoint, so there is nothing to
+// call here; this only ever narrows `messages`, already fetched for display.
+const showSearch = ref(false)
 const searchQuery = ref('')
 const searchInputRef = ref(null)
 
-watch(showSearch, (open) => {
-  if (open) {
+function toggleSearch() {
+  showSearch.value = !showSearch.value
+  if (showSearch.value) {
     nextTick(() => searchInputRef.value?.el?.focus())
   } else {
     searchQuery.value = ''
   }
-})
+}
 
 function clearSearch() {
   searchQuery.value = ''
@@ -153,6 +239,7 @@ watch(
   () => props.activeConversationId,
   () => {
     showSearch.value = false
+    searchQuery.value = ''
   },
 )
 
@@ -221,6 +308,18 @@ const visibleGroupedMessages = computed(() =>
 
 function openFileInAnotherTab(url) {
   window.open(url, '_blank')
+}
+
+// The switcher used to label every tab with the contact's name — useless
+// once a contact has more than one conversation, since every tab reads
+// identically (this is exactly why it shipped confusing: 2 conversations,
+// both "Shivam Gupta", no way to tell them apart without clicking through).
+// Status + recency is what actually distinguishes conversations in Chatwoot's
+// own inbox UI, so mirror that instead.
+function conversationLabel(conv) {
+  const status = conv.status === 'resolved' ? __('Resolved') : __('Open')
+  const last = conv.last_activity_at || conv.timestamp
+  return last ? `${status} · ${timeAgo(last * 1000)}` : status
 }
 
 function formatChatwootMessage(message) {
