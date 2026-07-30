@@ -515,6 +515,32 @@ def validate_request():
 
 
 @frappe.whitelist()
+def get_number_capabilities(number: str):
+	"""Look up what a Plivo number can actually receive (voice/SMS) — needed
+	before pointing a WABA-registration OTP at it, since some Plivo number
+	types are voice-only or SMS-only and Meta's OTP can arrive either way."""
+	settings = get_plivo_settings()
+	auth_id = settings.auth_id
+	auth_token = settings.get_password("auth_token")
+
+	response = requests.get(
+		f"https://api.plivo.com/v1/Account/{auth_id}/Number/{number}/",
+		auth=(auth_id, auth_token),
+	)
+	response.raise_for_status()
+	data = response.json()
+
+	return {
+		"number": data.get("number"),
+		"voice_enabled": bool(data.get("voice_enabled")),
+		"sms_enabled": bool(data.get("sms_enabled")),
+		"number_type": data.get("number_type"),
+		"region": data.get("region"),
+		"application": data.get("application"),
+	}
+
+
+@frappe.whitelist()
 def is_integration_enabled():
 	return frappe.db.get_single_value("CRM Plivo Settings", "enabled", True)
 
