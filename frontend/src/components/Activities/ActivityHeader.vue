@@ -70,6 +70,14 @@
         @click="whatsappBox.show()"
       />
     </div>
+    <!-- Chatwoot has no create-new action of its own (no "start conversation"
+    endpoint exists — conversations only originate from the customer's side or
+    from Chatwoot itself) and no case for it below, so it used to silently
+    fall into the generic dropdown meant for tabs like Activity/Data. That
+    dropdown's options (Email, Comment, Log a Call, WhatsApp Message, etc.)
+    are unrelated to Chatwoot and one of them ("WhatsApp Message") would jump
+    the user to a different tab — confusing, so we just show nothing here. -->
+    <template v-else-if="title == 'Chatwoot'" />
     <Dropdown v-else :options="defaultActions" @click.stop>
       <template #default="{ open }">
         <Button

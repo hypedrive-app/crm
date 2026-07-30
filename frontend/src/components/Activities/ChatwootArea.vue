@@ -19,7 +19,7 @@
       v-for="group in groupedMessages"
       :key="group.key"
       class="group flex gap-2 mb-3"
-      :class="[group.direction == 'outgoing' ? 'flex-row-reverse' : '']"
+      :class="[group.direction == 'outgoing' ? 'justify-end' : '']"
     >
       <div
         v-if="group.direction == 'activity'"
